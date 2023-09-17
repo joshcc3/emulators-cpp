@@ -636,11 +636,24 @@ public:
                     case 0x29:
                         indexRegister.reg = FONT_ADDRESSES + vx * 5;
                         break;
-                    case 0x33:
+                    case 0x33: {
+                        uint8_t digit1 = vx / 100;
+                        uint8_t digit2 = (vx % 100) / 10;
+                        uint8_t digit3 = vx % 10;
+                        mainMemory[indexRegister.reg] = digit1;
+                        mainMemory[indexRegister.reg + 1] = digit2;
+                        mainMemory[indexRegister.reg + 2] = digit3;
                         break;
+                    }
                     case 0x55:
+                        for(int i = 0; i <= timerAndLoad.x; ++i) {
+                            mainMemory[indexRegister.reg + i] = registers[i];
+                        }
                         break;
                     case 0x65:
+                        for(int i = 0; i <= timerAndLoad.x; ++i) {
+                            registers[i] = mainMemory[indexRegister.reg + i];
+                        }
                         break;
                     default:
                         std::cout << "Unexpected instruction [" << n << "]." << std::endl;
