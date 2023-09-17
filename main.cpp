@@ -15,9 +15,11 @@ using namespace std;
 
 
 int main() {
-
+    constexpr uint32_t RANDOM_GEN_SEED = 0x7645387a;
     constexpr int WIDTH = 640;
     constexpr int HEIGHT = 320;
+
+    srand(RANDOM_GEN_SEED);
 
     sf::RenderWindow w{sf::VideoMode(WIDTH, HEIGHT), "Test", sf::Style::Default};
 
@@ -32,9 +34,16 @@ int main() {
         exit(1);
     }
 
+    vector<sf::Event> events;
+    events.reserve(100);
+
     sf::Sprite sprite;
     sprite.setTexture(texture);
+
     int instructionCount = 0;
+
+    constexpr int INSTRUCTIONS_PER_SECOND = 600;
+
     while (w.isOpen()) {
 
         sf::Event e{};
@@ -42,20 +51,25 @@ int main() {
             if (e.type == sf::Event::EventType::Closed) {
                 w.close();
             }
+            events.push_back(e);
         }
         w.clear(sf::Color::Black);
 
+        emu.processKeyboardEvents(events);
         uint16_t instr = emu.fetch();
         emu.decodeAndExecute(instr);
 //        emu.draw();
 
+
+        ++instructionCount;
+        if(instructionCount % (INSTRUCTIONS_PER_SECOND/60) == 0) {
+            _sleep(1000/60);
+            emu.updateTimers();
+        }
+
         texture.update(pixels);
         w.draw(sprite);
         w.display();
-        ++instructionCount;
-        if(instructionCount % 700 == 0) {
-            _sleep(1000);
-        }
     }
 
 

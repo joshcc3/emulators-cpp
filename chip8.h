@@ -14,12 +14,13 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include<cstdlib>
+
 #include <SFML/Graphics.hpp>
 
 using addr_t = uint16_t;
 using regix_t = uint8_t;
 using data_t = uint8_t;
-using signed_data_t = int8_t;
 
 constexpr uint16_t STACK_MEMORY = 512 / sizeof(uint16_t);
 constexpr uint16_t MAIN_MEMORY_SIZE_B = 4096;
@@ -65,31 +66,55 @@ public:
         std::fill(reg.begin(), reg.end(), 0);
     }
 
-    std::array<signed_data_t, 16> reg;
+    std::array<data_t, 16> reg;
 
-    signed_data_t &operator[](regix_t ix) {
+    data_t &operator[](regix_t ix) {
         // TODO a bunch of checks
         return reg[ix];
     }
 };
 
 class stack_t {
-    addr_t base_addr;
+    int stackSize;
     std::array<addr_t, STACK_MEMORY> mem;
 public:
-    stack_t() : base_addr{0x0A00} {
+    stack_t() {
         std::fill(mem.begin(), mem.end(), 0);
+    }
+
+    addr_t pop() {
+        assert(stackSize > 0);
+        return mem[stackSize--];
+    }
+
+    void push(addr_t a) {
+        assert(a >= USER_SPACE_START);
+        mem[stackSize++] = a;
     }
 };
 
 class delaytimer_t {
+public:
+
     uint8_t timer;
+    void decrement() {
+        if(timer > 0) {
+            --timer;
+        }
+    }
 
 };
 
 class soundtimer_t {
-    uint8_t timer;
+public:
 
+    uint8_t timer;
+    void decrement() {
+        if(timer > 0) {
+            std::cout << '\a';
+            --timer;
+        }
+    }
 };
 
 
@@ -104,7 +129,7 @@ public:
     uint8_t n;
     const std::vector<uint8_t> data;
 };
-
+constexpr addr_t FONT_ADDRESSES = 0x50;
 class mainmemory_t {
 public:
     std::array<data_t, MAIN_MEMORY_SIZE_B> mem;
@@ -128,7 +153,7 @@ public:
                 0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
                 0xF0, 0x80, 0xF0, 0x80, 0x80  // F
         };
-        std::copy(fonts.begin(), fonts.end(), mem.begin() + 0x50);
+        std::copy(fonts.begin(), fonts.end(), mem.begin() + FONT_ADDRESSES);
         std::ifstream input(romName, std::ios::binary);
         std::vector<unsigned char> buffer(std::istreambuf_iterator<char>(input), {});
         std::copy(buffer.begin(), buffer.end(), mem.begin() + USER_SPACE_START);
@@ -301,6 +326,62 @@ struct instr_t {
     }
 };
 
+constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
+constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
+using Scancode = sf::Keyboard::Scancode;
+
+class keyboard_t {
+    std::bitset<128> interestKeys;
+    std::map<int, int> keyMap;
+public:
+
+    data_t lastKeyPress;
+
+
+    keyboard_t() {
+        std::vector<Scancode> events = {Scancode::Num1, Scancode::Num2, Scancode::Num3, Scancode::Num4,
+                                        Scancode::Q, Scancode::W, Scancode::E, Scancode::R,
+                                        Scancode::A, Scancode::S, Scancode::D, Scancode::F,
+                                        Scancode::Z, Scancode::X, Scancode::C, Scancode::V};
+        for (auto e: events) {
+            interestKeys[e] = true;
+        }
+
+        keyMap = std::map<int, int>{};
+        keyMap[Scancode::Num1] = 1;
+        keyMap[Scancode::Num2] = 2;
+        keyMap[Scancode::Num3] = 3;
+        keyMap[Scancode::Num4] = 0xC;
+        keyMap[Scancode::Q] = 4;
+        keyMap[Scancode::W] = 5;
+        keyMap[Scancode::E] = 6;
+        keyMap[Scancode::R] = 0xD;
+        keyMap[Scancode::A] = 7;
+        keyMap[Scancode::S] = 8;
+        keyMap[Scancode::D] = 9;
+        keyMap[Scancode::F] = 0xE;
+        keyMap[Scancode::Z] = 0xA;
+        keyMap[Scancode::X] = 0;
+        keyMap[Scancode::C] = 0xB;
+        keyMap[Scancode::V] = 0xF;
+    }
+
+    std::bitset<16> keysPressed;
+
+    void processKeyEvents(const std::vector<sf::Event> &events) {
+        for (auto event: events) {
+            if (event.type & (KEYPRESS | KEYRELEASED)) {
+                int deviceKeyPad = keyMap[event.key.scancode];
+                if (interestKeys[deviceKeyPad]) {
+                    keysPressed[deviceKeyPad] = (event.type == KEYPRESS);
+                    lastKeyPress = deviceKeyPad;
+                }
+            }
+        }
+    }
+
+};
+
 class chip8 {
 
     // all the resources
@@ -329,6 +410,7 @@ class chip8 {
     soundtimer_t soundTimer;
     mainmemory_t mainMemory;
     display_t disp;
+    keyboard_t keyboard;
 
 
 public:
@@ -339,9 +421,14 @@ public:
             mainMemory(romName),
             disp{displayHeight,
                  displayWidth,
-                 (sf::Uint32 *) deviceMem} {}
+                 (sf::Uint32 *) deviceMem} {
+    }
 
     [[nodiscard]]
+
+    void processKeyboardEvents(const std::vector<sf::Event> &v) {
+        keyboard.processKeyEvents(v);
+    }
 
     uint16_t fetch() noexcept {
         assert((programCounter.pc >= USER_SPACE_START || programCounter.pc == 0) &&
@@ -360,12 +447,49 @@ public:
                     case 0x0E0:
                         disp.clear();
                         break;
+                    case 0x0EE:
+                        programCounter.pc = stack.pop();
+                        break;
                 }
                 break;
             }
             case 0x1: { // jump
                 addr_t jmpInstr = i.getOperand();
                 programCounter.set(jmpInstr);
+                break;
+            }
+            case 0x2: {
+                stack.push(programCounter.pc);
+                addr_t jmpInstr = i.getOperand();
+                programCounter.set(jmpInstr);
+                break;
+            }
+            case 0x3: {
+                auto conditionalSkip = *reinterpret_cast<instr_typ2 *>(&instruction);
+                regix_t x = conditionalSkip.x;
+                data_t val = conditionalSkip.getN();
+                if (registers[x] == val) {
+                    programCounter.pc += 2;
+                }
+                break;
+            }
+            case 0x4: {
+                auto conditionalSkip = *reinterpret_cast<instr_typ2 *>(&instruction);
+                regix_t x = conditionalSkip.x;
+                data_t val = conditionalSkip.getN();
+                if (registers[x] != val) {
+                    programCounter.pc += 2;
+                }
+                break;
+            }
+            case 0x5: {
+                auto conditionalSkipReg = *reinterpret_cast<instr_typ1 *>(&instruction);
+                assert(conditionalSkipReg.n == 0);
+                regix_t x = conditionalSkipReg.x;
+                regix_t y = conditionalSkipReg.y;
+                if (registers[x] == registers[y]) {
+                    programCounter.pc += 2;
+                }
                 break;
             }
             case 0x6: { // set register
@@ -378,13 +502,79 @@ public:
             case 0x7: { // add value to register
                 auto regSet = *reinterpret_cast<instr_typ2 *>(&instruction);
                 regix_t x = regSet.x;
-                int8_t nn = regSet.getN();
+                data_t nn = regSet.getN();
 
                 registers[x] += nn;
                 break;
             }
+            case 0x8: {
+                auto arithmetic = *reinterpret_cast<instr_typ1 *>(&instruction);
+                data_t &vx = registers[arithmetic.x];
+                data_t &vy = registers[arithmetic.y];
+                data_t &vf = registers[0xf];
+                switch (arithmetic.n) {
+                    case 0x0:
+                        vx = vy;
+                        break;
+                    case 0x1:
+                        vx |= vy;
+                        break;
+                    case 0x2:
+                        vx &= vy;
+                        break;
+                    case 0x3:
+                        vx ^= vy;
+                        break;
+                    case 0x4:
+                        vf = vy > 255 - vx;
+                        vx += vy;
+                        break;
+                    case 0x5:
+                        vf = vx > vy;
+                        vx -= vy;
+                        break;
+                    case 0x6:
+                        std::cout << "Ambiguous 8XY6 Instruction - defaulting to super-chip" << std::endl;
+                        vf = vx & 1;
+                        vx >>= 1;
+                        break;
+                    case 0x7:
+                        vf = vy > vx;
+                        vx = vy - vx;
+                        break;
+                    case 0xE:
+                        std::cout << "Ambiguous 8XYE Instruction - defaulting to super-chip" << std::endl;
+                        vf = (vx & 0x80) != 0;
+                        vx <<= 1;
+                        break;
+                }
+                break;
+            }
+            case 0x9: {
+                auto conditionalSkipReg = *reinterpret_cast<instr_typ1 *>(&instruction);
+                assert(conditionalSkipReg.n == 0);
+                regix_t x = conditionalSkipReg.x;
+                regix_t y = conditionalSkipReg.y;
+                if (registers[x] != registers[y]) {
+                    programCounter.pc += 2;
+                }
+                break;
+            }
             case 0xA: { // set index register
                 indexRegister.set(i.getOperand());
+                break;
+            }
+            case 0xB: {
+                std::cout << "Ambiguous BNNN Instruction - defaulting to COSMAC" << std::endl;
+                programCounter.pc = i.getOperand() + registers[0];
+                break;
+            }
+            case 0xC: {
+                auto randomInstr = *reinterpret_cast<instr_typ2 *>(&instruction);
+                data_t &vx = registers[randomInstr.x];
+                data_t n = randomInstr.getN();
+                uint32_t randomVal = rand();
+                vx = n & (randomVal & 0xff);
                 break;
             }
             case 0xD: { // display
@@ -394,6 +584,68 @@ public:
                 data_t n = ops.n;
                 sprite_t sprite = mainMemory.getSpriteData(indexRegister.reg, n);
                 disp.draw(sprite, x, y);
+                break;
+            }
+            case 0xE: {
+                auto keyboardSkip = *reinterpret_cast<instr_typ2 *>(&instruction);
+                data_t &vx = registers[keyboardSkip.x];
+                switch (keyboardSkip.getN()) {
+                    case 0x9E:
+                        if (keyboard.keysPressed[vx]) {
+                            programCounter.pc += 2;
+                        }
+                        break;
+                    case 0xA1:
+                        if (!keyboard.keysPressed[vx]) {
+                            programCounter.pc += 2;
+                        }
+                        break;
+                    default:
+                        std::cerr << "Unrecognized Instruction " << keyboardSkip.getN() << std::endl;
+                        exit(1);
+                }
+                break;
+            }
+            case 0xF: {
+                auto timerAndLoad = *reinterpret_cast<instr_typ2 *>(&instruction);
+                data_t &vx = registers[timerAndLoad.x];
+                data_t &vf = registers[0xF];
+                data_t n = timerAndLoad.getN();
+                switch (n) {
+                    case 0x07:
+                        vx = delayTimer.timer;
+                        break;
+                    case 0x15:
+                        delayTimer.timer = vx;
+                        break;
+                    case 0x18:
+                        soundTimer.timer = vx;
+                        break;
+                    case 0x1E:
+                        vf = indexRegister.reg > 0x0fff - vx;
+                        indexRegister.reg += vx;
+                        break;
+                    case 0x0A:
+                        if(keyboard.lastKeyPress <= 0xF) {
+                            keyboard.lastKeyPress = 0x10;
+                            vx = keyboard.lastKeyPress;
+                        } else {
+                            programCounter.pc -= 2;
+                        }
+                        break;
+                    case 0x29:
+                        indexRegister.reg = FONT_ADDRESSES + vx * 5;
+                        break;
+                    case 0x33:
+                        break;
+                    case 0x55:
+                        break;
+                    case 0x65:
+                        break;
+                    default:
+                        std::cout << "Unexpected instruction [" << n << "]." << std::endl;
+                        exit(1);
+                }
                 break;
             }
             default: {
@@ -413,6 +665,12 @@ public:
         }
     }
 
+
+    void updateTimers() {
+        delayTimer.decrement();
+        soundTimer.decrement();
+
+    }
 };
 
 #endif //GBA_EMULATOR_CHIP8_H
