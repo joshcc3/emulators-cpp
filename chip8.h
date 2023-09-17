@@ -17,7 +17,8 @@
 
 using addr_t = uint16_t;
 using regix_t = uint8_t;
-using data_t = int8_t;
+using data_t = uint8_t;
+using signed_data_t = int8_t;
 
 constexpr uint16_t STACK_MEMORY = 512 / sizeof(uint16_t);
 constexpr uint16_t MAIN_MEMORY_SIZE_B = 4096;
@@ -26,6 +27,7 @@ constexpr addr_t USER_SPACE_START = 0x200;
 
 constexpr static int SCREEN_HEIGHT = 32;
 constexpr static int SCREEN_WIDTH = 64;
+
 
 class pc_t {
 public:
@@ -62,9 +64,9 @@ public:
         std::fill(reg.begin(), reg.end(), 0);
     }
 
-    std::array<data_t, 16> reg;
+    std::array<signed_data_t, 16> reg;
 
-    data_t &operator[](regix_t ix) {
+    signed_data_t &operator[](regix_t ix) {
         // TODO a bunch of checks
         return reg[ix];
     }
@@ -127,10 +129,9 @@ public:
         };
         std::copy(fonts.begin(), fonts.end(), mem.begin() + 0x50);
         std::ifstream input(romName, std::ios::binary);
-        std::copy(
-                std::istreambuf_iterator<char>(input),
-                std::istreambuf_iterator<char>(),
-                mem.begin() + USER_SPACE_START);
+        std::vector<unsigned char> buffer(std::istreambuf_iterator<char>(input), {});
+        std::copy(buffer.begin(), buffer.end(), mem.begin() + USER_SPACE_START);
+
     }
 
     data_t &operator[](addr_t addr) {
@@ -148,7 +149,8 @@ public:
     sprite_t getSpriteData(addr_t indexRegister, data_t n) {
         assert(n >= 1 && n <= SCREEN_HEIGHT);
         assert(mem[indexRegister] >= 0 && mem[indexRegister] < MAIN_MEMORY_SIZE_B);
-        return sprite_t{(uint8_t) n, std::vector<uint8_t>{}};
+        return sprite_t{(uint8_t) n,
+                        std::vector<uint8_t>(mem.begin() + indexRegister, mem.begin() + indexRegister + n)};
     }
 };
 
@@ -158,19 +160,43 @@ class display_t {
 public:
     std::vector<std::bitset<64>> disp;
 
-    display_t() : disp{SCREEN_HEIGHT, std::bitset<SCREEN_WIDTH>{0x0}} {}
+    display_t() : disp(SCREEN_HEIGHT, std::bitset<SCREEN_WIDTH>{0x0}) {}
 
     void clear() {
         for (auto &it: disp) {
             it &= 0x0;
         }
     }
+    unsigned char f(unsigned char b) const {
+        b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+        b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+        b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+        return b;
+    }
+
 
     void draw(const sprite_t &sprite, data_t x, data_t y) {
         // assert on the bounds of x and y and on the sprite.
         for (int i = 0; i < sprite.n && y + i < SCREEN_HEIGHT; ++i) {
             int screenY = y + i;
-            uint64_t maskL = (sprite.data[i] >> std::max(0, x + 8 - SCREEN_WIDTH)) << (SCREEN_WIDTH - x);
+
+            //            int rightOffset = std::max(0,SCREEN_WIDTH - x - 8);
+//            int charactersElided = std::max(0, x + 8 - SCREEN_WIDTH);
+//            uint64_t maskL = (((uint64_t)sprite.data[i]) >> charactersElided) << rightOffset;
+
+            uint64_t byte1Bits = 8 * (x / 8 + 1) - x;
+            uint64_t byte1Pos = 8 * (x / 8);
+            uint64_t byte2Bits = 8 - byte1Bits;
+            uint64_t byte2Pos = byte1Pos + 8;
+            uint64_t byte2Mask = (1 << byte2Bits) - 1;
+            uint64_t byte1Mask = ~byte2Mask;
+
+            unsigned char byte1 = (sprite.data[i] & byte1Mask) >> byte2Bits;
+            unsigned char byte2 = (sprite.data[i] & byte2Mask) << byte1Bits;
+            unsigned char _byte1 = f(byte1);
+            unsigned char _byte2 = f(byte2);
+
+            uint64_t maskL = ((uint64_t) _byte1 << byte1Pos) | ((uint64_t) _byte2 << byte2Pos);
             std::bitset<SCREEN_WIDTH> mask{maskL};
             disp[screenY] ^= mask;
         }
@@ -179,18 +205,18 @@ public:
 
 struct instr_typ1 {
 
-    data_t typ: 4;
-    regix_t x: 4;
-    regix_t y: 4;
     data_t n: 4;
+    regix_t y: 4;
+    regix_t x: 4;
+    data_t typ: 4;
 };
 
 struct instr_typ2 {
 
-    data_t typ: 4;
-    regix_t x: 4;
-    data_t _n1: 4;
     data_t _n2: 4;
+    data_t _n1: 4;
+    regix_t x: 4;
+    data_t typ: 4;
 
     [[nodiscard]] data_t getN() const {
         return (_n1 << 4) | _n2;
@@ -198,9 +224,9 @@ struct instr_typ2 {
 };
 
 struct instr_t {
-    uint8_t typ: 4;
-    uint8_t _op1: 4;
     uint8_t _op2: 8;
+    uint8_t _op1: 4;
+    uint8_t typ: 4;
 
     [[nodiscard]] uint16_t getOperand() const {
         return ((uint16_t) _op1 << 8) | (uint16_t) _op2;
@@ -239,7 +265,8 @@ class chip8 {
 
 public:
 
-    chip8(const std::string &romName) : programCounter{USER_SPACE_START}, indexRegister{0x050}, mainMemory(romName), disp{} {
+    chip8(const std::string &romName) : programCounter{USER_SPACE_START}, indexRegister{0x050}, mainMemory(romName),
+                                        disp{} {
 
     }
 
@@ -247,7 +274,7 @@ public:
 
     uint16_t fetch() const noexcept {
         assert(programCounter.pc >= USER_SPACE_START && programCounter.pc <= MAIN_MEMORY_SIZE_B - 16);
-        return (mainMemory[programCounter.pc] << 8) | mainMemory[programCounter.pc + 1];
+        return ((uint8_t) (mainMemory[programCounter.pc]) << 8) | (uint8_t) mainMemory[programCounter.pc + 1];
     }
 
     void decodeAndExecute(uint16_t instruction) {
@@ -257,6 +284,7 @@ public:
                 switch (i.getOperand()) {
                     case 0x0E0:
                         disp.clear();
+                        draw();
                         break;
                 }
                 break;
@@ -276,7 +304,7 @@ public:
             case 0x7: { // add value to register
                 auto regSet = *reinterpret_cast<instr_typ2 *>(&instruction);
                 regix_t x = regSet.x;
-                data_t nn = regSet.getN();
+                int8_t nn = regSet.getN();
 
                 registers[x] += nn;
                 break;
@@ -292,6 +320,7 @@ public:
                 data_t n = ops.n;
                 sprite_t sprite = mainMemory.getSpriteData(indexRegister.reg, n);
                 disp.draw(sprite, x, y);
+                draw();
                 break;
             }
             default: {
@@ -299,11 +328,16 @@ public:
                 assert(false);
             }
         }
+        programCounter.pc += 2;
+
     }
 
     void draw() {
         for (auto str: disp.disp) {
-            std::cout << str << std::endl;
+            for (int i = 0; i < str.size(); ++i) {
+                std::cout << ((str[i] == 0) ? ' ' : '1');
+            }
+            std::cout << std::endl;
         }
     }
 
