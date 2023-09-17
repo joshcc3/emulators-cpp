@@ -8,6 +8,7 @@ https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
 chip8 roms: https://github.com/loktar00/chip8/blob/master/roms/IBM%20Logo.ch8
 
+For graphics we are using: https://github.com/SFML/SFML
 
 
 GBA Stuff:

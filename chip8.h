@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <SFML/Graphics.hpp>
 
 using addr_t = uint16_t;
 using regix_t = uint8_t;
@@ -132,6 +133,12 @@ public:
         std::vector<unsigned char> buffer(std::istreambuf_iterator<char>(input), {});
         std::copy(buffer.begin(), buffer.end(), mem.begin() + USER_SPACE_START);
 
+        // Jump instruction
+        mem[0] = 0x1;
+        mem[1] = 0x0;
+        mem[2] = 0x0;
+        mem[3] = 0x0;
+
     }
 
     data_t &operator[](addr_t addr) {
@@ -157,16 +164,37 @@ public:
 
 class display_t {
 
+    int displayHeight;
+    int displayWidth;
+    int pixelDisplaySizeHeight;
+    int pixelDisplaySizeWidth;
+    uint32_t pixelDataTable[2];
+    sf::Uint32 *deviceBuffer;
+
 public:
+
     std::vector<std::bitset<64>> disp;
 
-    display_t() : disp(SCREEN_HEIGHT, std::bitset<SCREEN_WIDTH>{0x0}) {}
+    display_t(int _displayHeight, int _displayWidth, sf::Uint32 *_deviceBuffer) :
+            disp(SCREEN_HEIGHT, std::bitset<SCREEN_WIDTH>{0x0}),
+            displayHeight{_displayHeight},
+            displayWidth{_displayWidth},
+            pixelDisplaySizeHeight{
+                    _displayHeight /
+                    SCREEN_HEIGHT
+            },
+            pixelDisplaySizeWidth{
+                    _displayWidth / SCREEN_WIDTH
+            },
+            deviceBuffer{_deviceBuffer} {
+        pixelDataTable[0] = 0;
+        pixelDataTable[1] = 0xffffffff;
+    }
 
     void clear() {
-        for (auto &it: disp) {
-            it &= 0x0;
-        }
+        std::fill(deviceBuffer, deviceBuffer + displayWidth * displayHeight, 0x0);
     }
+
     unsigned char f(unsigned char b) const {
         b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
         b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
@@ -175,21 +203,45 @@ public:
     }
 
 
+//    void drawDebug(const sprite_t &sprite, data_t x, data_t y) {
+//        // assert on the bounds of x and y and on the sprite.
+//        for (int i = 0; i < sprite.n && y + i < SCREEN_HEIGHT; ++i) {
+//            int screenY = y + i;
+//
+//            //            int rightOffset = std::max(0,SCREEN_WIDTH - x - 8);
+////            int charactersElided = std::max(0, x + 8 - SCREEN_WIDTH);
+////            uint64_t maskL = (((uint64_t)sprite.data[i]) >> charactersElided) << rightOffset;
+//
+//            uint64_t byte1Bits = 8 * (x / 8 + 1) - x;
+//            uint64_t byte1Pos = 8 * (x / 8);
+//            uint64_t byte2Bits = 8 - byte1Bits;
+//            uint64_t byte2Pos = byte1Pos + 8;
+//            uint64_t byte2Mask = (1 << byte2Bits) - 1;
+//            uint64_t byte1Mask = ~byte2Mask;
+//
+//            unsigned char byte1 = (sprite.data[i] & byte1Mask) >> byte2Bits;
+//            unsigned char byte2 = (sprite.data[i] & byte2Mask) << byte1Bits;
+//            unsigned char _byte1 = f(byte1);
+//            unsigned char _byte2 = f(byte2);
+//
+//            uint64_t maskL = ((uint64_t) _byte1 << byte1Pos) | ((uint64_t) _byte2 << byte2Pos);
+//            std::bitset<SCREEN_WIDTH> mask{maskL};
+//            disp[screenY] ^= mask;
+//        }
+//    }
+
     void draw(const sprite_t &sprite, data_t x, data_t y) {
-        // assert on the bounds of x and y and on the sprite.
+
+        uint64_t byte1Bits = 8 * (x / 8 + 1) - x;
+        uint64_t byte1Pos = 8 * (x / 8);
+        uint64_t byte2Bits = 8 - byte1Bits;
+        uint64_t byte2Pos = byte1Pos + 8;
+        uint64_t byte2Mask = (1 << byte2Bits) - 1;
+        uint64_t byte1Mask = ~byte2Mask;
+
+
         for (int i = 0; i < sprite.n && y + i < SCREEN_HEIGHT; ++i) {
             int screenY = y + i;
-
-            //            int rightOffset = std::max(0,SCREEN_WIDTH - x - 8);
-//            int charactersElided = std::max(0, x + 8 - SCREEN_WIDTH);
-//            uint64_t maskL = (((uint64_t)sprite.data[i]) >> charactersElided) << rightOffset;
-
-            uint64_t byte1Bits = 8 * (x / 8 + 1) - x;
-            uint64_t byte1Pos = 8 * (x / 8);
-            uint64_t byte2Bits = 8 - byte1Bits;
-            uint64_t byte2Pos = byte1Pos + 8;
-            uint64_t byte2Mask = (1 << byte2Bits) - 1;
-            uint64_t byte1Mask = ~byte2Mask;
 
             unsigned char byte1 = (sprite.data[i] & byte1Mask) >> byte2Bits;
             unsigned char byte2 = (sprite.data[i] & byte2Mask) << byte1Bits;
@@ -199,8 +251,24 @@ public:
             uint64_t maskL = ((uint64_t) _byte1 << byte1Pos) | ((uint64_t) _byte2 << byte2Pos);
             std::bitset<SCREEN_WIDTH> mask{maskL};
             disp[screenY] ^= mask;
+
+            for (int j = 0; j < 8; ++j) {
+                int screenX = x + j;
+                bool pixelSet = disp[screenY][screenX];
+                uint32_t pixelData = pixelDataTable[pixelSet];
+                int deviceX = screenX * pixelDisplaySizeWidth;
+                int deviceY = screenY * pixelDisplaySizeHeight;
+                int pixelStartIx = deviceY * displayWidth + deviceX;
+                for (int dy = 0; dy < pixelDisplaySizeHeight; ++dy) {
+                    for (int dx = 0; dx < pixelDisplaySizeHeight; ++dx) {
+                        int pixelIx = pixelStartIx + dy * displayWidth + dx;
+                        deviceBuffer[pixelIx] = pixelData;
+                    }
+                }
+            }
         }
     }
+
 };
 
 struct instr_typ1 {
@@ -265,16 +333,23 @@ class chip8 {
 
 public:
 
-    chip8(const std::string &romName) : programCounter{USER_SPACE_START}, indexRegister{0x050}, mainMemory(romName),
-                                        disp{} {
-
-    }
+    chip8(const std::string &romName, int displayHeight, int displayWidth, sf::Uint8 *deviceMem) :
+            programCounter{USER_SPACE_START},
+            indexRegister{0x050},
+            mainMemory(romName),
+            disp{displayHeight,
+                 displayWidth,
+                 (sf::Uint32 *) deviceMem} {}
 
     [[nodiscard]]
 
-    uint16_t fetch() const noexcept {
-        assert(programCounter.pc >= USER_SPACE_START && programCounter.pc <= MAIN_MEMORY_SIZE_B - 16);
-        return ((uint8_t) (mainMemory[programCounter.pc]) << 8) | (uint8_t) mainMemory[programCounter.pc + 1];
+    uint16_t fetch() noexcept {
+        assert((programCounter.pc >= USER_SPACE_START || programCounter.pc == 0) &&
+               programCounter.pc <= MAIN_MEMORY_SIZE_B - 16);
+        uint16_t result =
+                ((uint8_t) (mainMemory[programCounter.pc]) << 8) | (uint8_t) mainMemory[programCounter.pc + 1];
+        programCounter.pc += 2;
+        return result;
     }
 
     void decodeAndExecute(uint16_t instruction) {
@@ -284,7 +359,6 @@ public:
                 switch (i.getOperand()) {
                     case 0x0E0:
                         disp.clear();
-                        draw();
                         break;
                 }
                 break;
@@ -320,15 +394,13 @@ public:
                 data_t n = ops.n;
                 sprite_t sprite = mainMemory.getSpriteData(indexRegister.reg, n);
                 disp.draw(sprite, x, y);
-                draw();
                 break;
             }
             default: {
                 std::cerr << "Unrecognized instruction [" << i.typ << "]" << std::endl;
-                assert(false);
+                programCounter.pc = 0;
             }
         }
-        programCounter.pc += 2;
 
     }
 
