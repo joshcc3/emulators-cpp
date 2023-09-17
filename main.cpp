@@ -25,7 +25,8 @@ int main() {
 
     sf::Uint8 pixels[WIDTH * HEIGHT * 4];
 
-    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\ibm_logo.ch8", HEIGHT, WIDTH, pixels};
+//    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\ibm_logo.ch8", HEIGHT, WIDTH, pixels};
+    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\tetris_1991.ch8", HEIGHT, WIDTH, pixels};
 
 
     sf::Texture texture;
@@ -59,7 +60,6 @@ int main() {
         uint16_t instr = emu.fetch();
         emu.decodeAndExecute(instr);
 //        emu.draw();
-
 
         ++instructionCount;
         if(instructionCount % (INSTRUCTIONS_PER_SECOND/60) == 0) {
