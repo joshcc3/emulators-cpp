@@ -11,6 +11,13 @@ chip8 roms: https://github.com/loktar00/chip8/blob/master/roms/IBM%20Logo.ch8
 For graphics we are using: https://github.com/SFML/SFML
 
 
+Step 2
+===
+Game Boy/Colour emulator:
+
+https://gbdev.io/pandocs/Memory_Map.html
+
+
 GBA Stuff:
 
 

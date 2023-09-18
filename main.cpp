@@ -28,7 +28,8 @@ int main() {
     sf::Uint8 pixels[WIDTH * HEIGHT * 4];
 
 //    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\ibm_logo.ch8", HEIGHT, WIDTH, pixels};
-    chip8 emu{"/home/jc/projects/cpp/emulators-cpp/tetris.ch8", HEIGHT, WIDTH, pixels};
+//    chip8 emu{"/home/jc/projects/cpp/emulators-cpp/tetris.ch8", HEIGHT, WIDTH, pixels};
+    chip8 emu{"/home/jc/projects/cpp/emulators-cpp/trip.ch8", HEIGHT, WIDTH, pixels};
 
 
     sf::Texture texture;
