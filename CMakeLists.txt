@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.24)
 project(gba_emulator)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(SFML_STATIC_LIBRARIES TRUE)
 
-set(SFML_DIR "C:\\Users\\jerem\\CLionProjects\\gba_emulator\\SFML-2.6.0-windows-gcc-13.1.0-mingw-64-bit\\SFML-2.6.0\\lib\\cmake\\SFML")
+set(SFML_DIR "/home/jc/projects/cpp/SFML-2.6.0/lib/cmake/SFML/")
 
 find_package(SFML 2.6.0 COMPONENTS graphics window system REQUIRED)
 

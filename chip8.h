@@ -14,7 +14,8 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
-#include<cstdlib>
+#include <cstdlib>
+#include <set>
 
 #include <SFML/Graphics.hpp>
 
@@ -60,9 +61,9 @@ public:
     }
 };
 
-class register_t {
+class reg_t {
 public:
-    register_t() {
+    reg_t() {
         std::fill(reg.begin(), reg.end(), 0);
     }
 
@@ -84,7 +85,7 @@ public:
 
     addr_t pop() {
         assert(stackSize > 0);
-        return mem[stackSize--];
+        return mem[--stackSize];
     }
 
     void push(addr_t a) {
@@ -97,8 +98,9 @@ class delaytimer_t {
 public:
 
     uint8_t timer;
+
     void decrement() {
-        if(timer > 0) {
+        if (timer > 0) {
             --timer;
         }
     }
@@ -109,8 +111,9 @@ class soundtimer_t {
 public:
 
     uint8_t timer;
+
     void decrement() {
-        if(timer > 0) {
+        if (timer > 0) {
             std::cout << '\a';
             --timer;
         }
@@ -129,7 +132,9 @@ public:
     uint8_t n;
     const std::vector<uint8_t> data;
 };
+
 constexpr addr_t FONT_ADDRESSES = 0x50;
+
 class mainmemory_t {
 public:
     std::array<data_t, MAIN_MEMORY_SIZE_B> mem;
@@ -181,7 +186,7 @@ public:
     sprite_t getSpriteData(addr_t indexRegister, data_t n) {
         assert(n >= 1 && n <= SCREEN_HEIGHT);
         assert(mem[indexRegister] >= 0 && mem[indexRegister] < MAIN_MEMORY_SIZE_B);
-        return sprite_t{(uint8_t) n,
+        return sprite_t{n,
                         std::vector<uint8_t>(mem.begin() + indexRegister, mem.begin() + indexRegister + n)};
     }
 };
@@ -255,7 +260,9 @@ public:
 //        }
 //    }
 
-    void draw(const sprite_t &sprite, data_t x, data_t y) {
+    bool draw(const sprite_t &sprite, data_t x, data_t y) {
+
+        bool vf = false;
 
         uint64_t byte1Bits = 8 * (x / 8 + 1) - x;
         uint64_t byte1Pos = 8 * (x / 8);
@@ -275,6 +282,8 @@ public:
 
             uint64_t maskL = ((uint64_t) _byte1 << byte1Pos) | ((uint64_t) _byte2 << byte2Pos);
             std::bitset<SCREEN_WIDTH> mask{maskL};
+
+            vf |= (disp[screenY] & mask).any();
             disp[screenY] ^= mask;
 
             for (int j = 0; j < 8; ++j) {
@@ -292,6 +301,8 @@ public:
                 }
             }
         }
+
+        return vf;
     }
 
 };
@@ -331,23 +342,23 @@ constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
 using Scancode = sf::Keyboard::Scancode;
 
 class keyboard_t {
-    std::bitset<128> interestKeys;
-    std::map<int, int> keyMap;
+    std::set<Scancode> interestKeys;
+    std::map<Scancode , uint8_t> keyMap;
 public:
 
     data_t lastKeyPress;
 
 
-    keyboard_t() {
+    keyboard_t(): lastKeyPress{0x10} {
         std::vector<Scancode> events = {Scancode::Num1, Scancode::Num2, Scancode::Num3, Scancode::Num4,
                                         Scancode::Q, Scancode::W, Scancode::E, Scancode::R,
                                         Scancode::A, Scancode::S, Scancode::D, Scancode::F,
                                         Scancode::Z, Scancode::X, Scancode::C, Scancode::V};
         for (auto e: events) {
-            interestKeys[e] = true;
+            interestKeys.insert(e);
         }
 
-        keyMap = std::map<int, int>{};
+        keyMap = std::map<Scancode , uint8_t>{};
         keyMap[Scancode::Num1] = 1;
         keyMap[Scancode::Num2] = 2;
         keyMap[Scancode::Num3] = 3;
@@ -364,18 +375,18 @@ public:
         keyMap[Scancode::X] = 0;
         keyMap[Scancode::C] = 0xB;
         keyMap[Scancode::V] = 0xF;
+
+
     }
 
     std::bitset<16> keysPressed;
 
     void processKeyEvents(const std::vector<sf::Event> &events) {
         for (auto event: events) {
-            if (event.type & (KEYPRESS | KEYRELEASED)) {
+            if ((event.type & (KEYPRESS | KEYRELEASED)) && interestKeys.find(event.key.scancode) != interestKeys.end()) {
                 int deviceKeyPad = keyMap[event.key.scancode];
-                if (interestKeys[deviceKeyPad]) {
-                    keysPressed[deviceKeyPad] = (event.type == KEYPRESS);
-                    lastKeyPress = deviceKeyPad;
-                }
+                keysPressed[deviceKeyPad] = (event.type == KEYPRESS);
+                lastKeyPress = lastKeyPress == 0x10 ? deviceKeyPad : lastKeyPress;
             }
         }
     }
@@ -404,7 +415,7 @@ class chip8 {
 
     pc_t programCounter;
     ir_t indexRegister;
-    register_t registers;
+    reg_t registers;
     stack_t stack;
     delaytimer_t delayTimer;
     soundtimer_t soundTimer;
@@ -424,12 +435,12 @@ public:
                  (sf::Uint32 *) deviceMem} {
     }
 
-    [[nodiscard]]
 
     void processKeyboardEvents(const std::vector<sf::Event> &v) {
         keyboard.processKeyEvents(v);
     }
 
+    [[nodiscard]]
     uint16_t fetch() noexcept {
         assert((programCounter.pc >= USER_SPACE_START || programCounter.pc == 0) &&
                programCounter.pc <= MAIN_MEMORY_SIZE_B - 16);
@@ -466,18 +477,18 @@ public:
             }
             case 0x3: {
                 auto conditionalSkip = *reinterpret_cast<instr_typ2 *>(&instruction);
-                regix_t x = conditionalSkip.x;
+                data_t& vx = registers[conditionalSkip.x];
                 data_t val = conditionalSkip.getN();
-                if (registers[x] == val) {
+                if (vx == val) {
                     programCounter.pc += 2;
                 }
                 break;
             }
             case 0x4: {
                 auto conditionalSkip = *reinterpret_cast<instr_typ2 *>(&instruction);
-                regix_t x = conditionalSkip.x;
+                const data_t& vx = registers[conditionalSkip.x];
                 data_t val = conditionalSkip.getN();
-                if (registers[x] != val) {
+                if (vx != val) {
                     programCounter.pc += 2;
                 }
                 break;
@@ -583,7 +594,7 @@ public:
                 data_t y = registers[ops.y];
                 data_t n = ops.n;
                 sprite_t sprite = mainMemory.getSpriteData(indexRegister.reg, n);
-                disp.draw(sprite, x, y);
+                registers[0xF] = disp.draw(sprite, x, y);
                 break;
             }
             case 0xE: {
@@ -622,11 +633,11 @@ public:
                         soundTimer.timer = vx;
                         break;
                     case 0x1E:
-                        vf = indexRegister.reg > 0x0fff - vx;
+                        vf = indexRegister.reg > (0x0fff - vx);
                         indexRegister.reg += vx;
                         break;
                     case 0x0A:
-                        if(keyboard.lastKeyPress <= 0xF) {
+                        if (keyboard.lastKeyPress <= 0xF) {
                             keyboard.lastKeyPress = 0x10;
                             vx = keyboard.lastKeyPress;
                         } else {
@@ -646,12 +657,12 @@ public:
                         break;
                     }
                     case 0x55:
-                        for(int i = 0; i <= timerAndLoad.x; ++i) {
+                        for (int i = 0; i <= timerAndLoad.x; ++i) {
                             mainMemory[indexRegister.reg + i] = registers[i];
                         }
                         break;
                     case 0x65:
-                        for(int i = 0; i <= timerAndLoad.x; ++i) {
+                        for (int i = 0; i <= timerAndLoad.x; ++i) {
                             registers[i] = mainMemory[indexRegister.reg + i];
                         }
                         break;
