@@ -325,7 +325,6 @@ public:
                 f.zf = (reg + 1) == 0;
                 f.n = false;
                 f.h = (reg & 0xf) == 0xf;
-                f.cy = (reg + 1) == 0;
                 ++reg;
                 ++pc;
                 break;
@@ -340,7 +339,6 @@ public:
                 f.zf = (reg - 1) == 0;
                 f.n = true;
                 f.h = (reg & 0xf) == 0x0;
-                f.cy = reg == 0;
                 --reg;
                 ++pc;
                 break;
@@ -775,6 +773,17 @@ public:
                 pc += 2 + relJump;
                 break;
             }
+            case 0x04:
+            case 0x14:
+            case 0x24: {
+                uint8_t ix[3] = {3, 5, 7};
+                uint8_t &reg = registers[ix[opcode >> 4]];
+                f.zf = (reg + 1 == 0);
+                f.n = false;
+                f.h = ((reg & 0xf) == 0xf);
+                ++pc;
+                break;
+            }
             default: {
                 throw "Not implemented";
             }
@@ -798,10 +807,14 @@ public:
 
     uint8_t &scx;
     uint8_t &scy;
+    uint8_t &ly;
+    uint8_t &lyc;
     uint8_t &wx;
     uint8_t &wy;
     uint8_t &dma;
     uint8_t &bgp;
+    uint8_t &obp0;
+    uint8_t &obp1;
 
     LCDControl &lcdControl;
     LCDStatus &lcdStatus;
@@ -809,9 +822,9 @@ public:
     uint64_t clock;
 
     PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<uint8_t> &ram)
-            : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, wx{vram[0xFF4B]}, wy{vram[0xFF4A]},
-              dma{vram[0xFF46]}, bgp{vram[0xFF47]},
-              lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
+            : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
+              wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
+              obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
               lcdStatus{*reinterpret_cast<LCDStatus *>(&vram[0xFF41])},
               vram(ram), clock{0} {
 #ifdef DEBUG
@@ -847,7 +860,7 @@ public:
                 uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
                 int c = (color >> (2 * (pixelX % 8))) & 3;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
-                drawColorToScreen(pixelX, pixelY, outputColor);
+                drawColorToScreen(x, y, outputColor);
             }
 
         }
@@ -1002,6 +1015,10 @@ public:
         throw "Not implemeneted";
     }
 
+    void coincidenceInterruptt() {
+        throw "Not implemented";
+    }
+
     void oamSearch() {
         clock += 80;
     }
@@ -1037,6 +1054,12 @@ public:
 
         // need to set the status registers:
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
+            ppu.ly = i;
+            ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
+
+            if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
+                ppu.coincidenceInterruptt();
+            }
             // all following clockx %x %x cycles in 4MHz
             // should take 1/60th of a second at 1Mhz
 
@@ -1073,8 +1096,11 @@ public:
             ppu.vBlankInterrupt();
         }
         ppu.vblank();
-        while (cpu.clock <= ppu.clock) {
-            cpu.fetchDecodeExecute();
+        for (int i = 0; i < 10; ++i) {
+            ppu.ly = ppu.PIXEL_ROWS + i;
+            while (cpu.clock <= ppu.clock) {
+                cpu.fetchDecodeExecute();
+            }
         }
 
         if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22)) {
