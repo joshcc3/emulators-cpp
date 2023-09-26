@@ -95,39 +95,53 @@ public:
         uint8_t r[7] = {3, 2, 5, 4, 7, 6, 1};
         uint8_t opcode = vram[pc];
         switch (opcode) {
+
             case 0x01: // ld sp 0x
+                clock += 12;
                 bc = (uint16_t &) (vram[pc + 1]);
                 pc += 3;
                 break;
+
             case 0x11:
+                clock += 12;
                 de = (uint16_t &) (vram[pc + 1]);
                 pc += 3;
                 break;
+
             case 0x21:
+                clock += 12;
                 hl = (uint16_t &) (vram[pc + 1]);
                 pc += 3;
                 break;
+
             case 0x31:
+                clock += 12;
                 sp = (uint16_t &) (vram[pc + 1]);
                 pc += 3;
                 break;
 
             case 0x32:
+                clock += 8;
                 vram[hl--] = a;
                 ++pc;
                 break;
 
-            case 0x20:
+            case 0x20: {
                 if (f.zf != 0) {
                     int8_t relativeOffset = vram[pc + 1];
                     pc = pc + relativeOffset;
+                    clock += 12;
                 } else {
                     pc += 2;
+                    clock += 8;
                 }
                 break;
+            }
+
             case 0xCB:
                 switch (vram[pc + 1]) {
                     case 0x7C:
+                        clock += 4;
                         f.zf = h >> 7;
                         f.h = 1;
                         pc += 2;
@@ -139,6 +153,7 @@ public:
                     case 0x14:
                     case 0x15:
                     case 0x17:
+                        clock += 4;
                         uint8_t &reg = r[opcode - 0x10];
                         bool carryFlag = reg >> 7;
                         reg = (reg << 1) | f.cy;
@@ -150,134 +165,152 @@ public:
                         break;
                 }
                 break;
-
             case 0xA0:
+                clock += 4;
                 a = a & b;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA1:
+                clock += 4;
                 a = a & c;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA2:
+                clock += 4;
                 a = a & d;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA3:
+                clock += 4;
                 a = a & e;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA4:
+                clock += 4;
                 a = a & h;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA5:
+                clock += 4;
                 a = a & l;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA6:
+                clock += 8;
                 a = a & vram[hl];
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA7:
+                clock += 4;
                 a = a & a;
                 f.h = 1;
                 f.zf = a == 0;
                 ++pc;
                 break;
-
             case 0xA8:
+                clock += 4;
                 a = a ^ b;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA9:
+                clock += 4;
                 a = a ^ c;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xAA:
+                clock += 4;
                 a = a ^ d;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xAB:
+                clock += 4;
                 a = a ^ e;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xAC:
+                clock += 4;
                 a = a ^ h;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xAD:
+                clock += 4;
                 a = a ^ l;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xAE:
+                clock += 8;
                 a = a ^ vram[hl];
                 f.zf = a == 0;
                 ++pc;
                 break;
-
             case 0xAF:
+                clock += 4;
                 a = a ^ a;
                 f.zf = a == 0;
                 ++pc;
                 break;
-
             case 0x0E: {
+                clock += 8;
                 uint8_t d8 = vram[pc + 1];
                 c = d8;
                 pc += 2;
                 break;
             }
             case 0x1E: {
+                clock += 8;
                 uint8_t d8 = vram[pc + 1];
                 e = d8;
                 pc += 2;
                 break;
             }
             case 0x2E: {
+                clock += 8;
                 uint8_t d8 = vram[pc + 1];
                 l = d8;
                 pc += 2;
                 break;
             }
             case 0x3E: {
+                clock += 8;
                 uint8_t d8 = vram[pc + 1];
                 a = d8;
                 pc += 2;
                 break;
             }
             case 0xE0: {
+                clock += 12;
                 vram[0xFF00 + vram[pc + 1]] = a;
                 pc += 2;
                 break;
             }
-
             case 0xE2: {
+                clock += 8;
                 vram[0xFF00 + c] = a;
                 pc += 1;
                 break;
             }
             case 0x0C: {
+                clock += 4;
                 f.zf = (c + 1) == 0;
                 f.n = 0;
                 f.h = (c & 0xf) == 0xf;
@@ -287,181 +320,213 @@ public:
                 break;
             }
             case 0x70: {
+                clock += 8;
                 vram[hl] = b;
                 ++pc;
                 break;
             }
             case 0x71: {
+                clock += 8;
                 vram[hl] = c;
                 ++pc;
                 break;
             }
             case 0x72: {
+                clock += 8;
                 vram[hl] = d;
                 ++pc;
                 break;
             }
             case 0x73: {
+                clock += 8;
                 vram[hl] = e;
                 ++pc;
                 break;
             }
             case 0x74: {
+                clock += 8;
                 vram[hl] = h;
                 ++pc;
                 break;
             }
             case 0x75: {
+                clock += 8;
                 vram[hl] = l;
                 ++pc;
                 break;
             }
             case 0x77: {
+                clock += 8;
                 vram[hl] = a;
                 ++pc;
                 break;
             }
-
             case 0x0A: {
+                clock += 8;
                 a = vram[bc];
                 ++pc;
                 break;
             }
             case 0x1A: {
+                clock += 8;
                 a = vram[de];
                 ++pc;
                 break;
             }
             case 0xCD: {
+                clock += 24;
                 uint16_t jumpAddr = ((uint16_t) (vram[pc + 1]) << 8) | (vram[pc + 2]);
                 vram[--sp] = pc >> 8;
                 vram[--sp] = pc & 0xff;
                 pc = jumpAddr;
                 break;
             }
-
             case 0x03: {
+                clock += 8;
                 ++bc;
                 ++pc;
                 break;
             }
             case 0x13: {
+                clock += 8;
                 ++de;
                 ++pc;
                 break;
             }
             case 0x23: {
+                clock += 8;
                 ++hl;
                 ++pc;
                 break;
             }
             case 0x33: {
+                clock += 8;
                 ++sp;
                 ++pc;
                 break;
             }
-
             case 0x40: {
+                clock += 4;
                 b = b;
                 ++pc;
                 break;
             }
             case 0x41: {
+                clock += 4;
                 b = c;
                 ++pc;
                 break;
             }
             case 0x42: {
+                clock += 4;
                 b = d;
                 ++pc;
                 break;
             }
             case 0x43: {
+                clock += 4;
                 b = e;
                 ++pc;
                 break;
             }
             case 0x44: {
+                clock += 4;
                 b = h;
                 ++pc;
                 break;
             }
             case 0x45: {
+                clock += 4;
                 b = l;
                 ++pc;
                 break;
             }
             case 0x50: {
+                clock += 4;
                 d = b;
                 ++pc;
                 break;
             }
             case 0x51: {
+                clock += 4;
                 d = c;
                 ++pc;
                 break;
             }
             case 0x52: {
+                clock += 4;
                 d = d;
                 ++pc;
                 break;
             }
             case 0x53: {
+                clock += 4;
                 d = e;
                 ++pc;
                 break;
             }
             case 0x54: {
+                clock += 4;
                 d = h;
                 ++pc;
                 break;
             }
             case 0x55: {
+                clock += 4;
                 d = l;
                 ++pc;
                 break;
             }
             case 0x60: {
+                clock += 4;
                 h = b;
                 ++pc;
                 break;
             }
             case 0x61: {
+                clock += 4;
                 h = c;
                 ++pc;
                 break;
             }
             case 0x62: {
+                clock += 4;
                 h = d;
                 ++pc;
                 break;
             }
             case 0x63: {
+                clock += 4;
                 h = e;
                 ++pc;
                 break;
             }
             case 0x64: {
+                clock += 4;
                 h = h;
                 ++pc;
                 break;
             }
             case 0x65: {
+                clock += 4;
                 h = l;
                 ++pc;
                 break;
             }
             case 0x47: {
+                clock += 4;
                 b = a;
                 ++pc;
                 break;
             }
             case 0x57: {
+                clock += 4;
                 d = a;
                 ++pc;
                 break;
             }
             case 0x67: {
+                clock += 4;
                 h = a;
                 ++pc;
                 break;
@@ -494,13 +559,14 @@ public:
             case 0x7c:
             case 0x7d:
             case 0x7f: {
+                clock += 4;
                 uint8_t o[4] = {2, 4, 6, 1};
                 registers[o[(opcode >> 4) - 4]] = registers[r[opcode - 0x48]];
                 ++pc;
                 break;
             }
-
             case 0xFE: {
+                clock += 8;
                 int res = a - vram[pc + 1];
                 f.zf = res == 0;
                 f.n = 1;
@@ -509,7 +575,6 @@ public:
                 pc += 2;
                 break;
             }
-
             case 0x90:
             case 0x91:
             case 0x92:
@@ -517,11 +582,10 @@ public:
             case 0x94:
             case 0x95:
             case 0x97: {
+                clock += 4;
                 uint8_t r[7] = {3, 2, 5, 4, 7, 6, 1};
-
                 uint8_t &opReg = registers[r[opcode - 0x48]];
                 uint8_t result = a - opReg;
-
                 f.zf = a == 0;
                 f.n = 1;
                 f.h = (a & 0xf) < (opReg & 0xf);
@@ -530,13 +594,14 @@ public:
                 ++pc;
                 break;
             }
-
             case 0xF0: {
+                clock += 12;
                 a = vram[0xFF00 | (pc + 1)];
                 pc += 2;
                 break;
             }
             case 0x05: {
+                clock += 4;
                 uint8_t &reg = b;
                 f.zf = (reg - 1) == 0;
                 f.n = 1;
@@ -546,6 +611,7 @@ public:
                 break;
             }
             case 0x15: {
+                clock += 4;
                 uint8_t &reg = d;
                 f.zf = (reg - 1) == 0;
                 f.n = 1;
@@ -555,6 +621,7 @@ public:
                 break;
             }
             case 0x25: {
+                clock += 4;
                 uint8_t &reg = h;
                 f.zf = (reg - 1) == 0;
                 f.n = 1;
@@ -563,53 +630,59 @@ public:
                 ++pc;
                 break;
             }
-
             case 0x06: {
+                clock += 8;
                 b = vram[pc + 1];
                 pc += 2;
                 break;
             }
             case 0x16: {
+                clock += 8;
                 d = vram[pc + 1];
                 pc += 2;
                 break;
             }
             case 0x26: {
+                clock += 8;
                 h = vram[pc + 1];
                 pc += 2;
                 break;
             }
-
             case 0x18: {
+                clock += 12;
                 pc = pc + (int8_t) (vram[pc + 1]);
                 break;
             }
-
             case 0xC5: {
+                clock += 16;
                 vram[--sp] = bc >> 8;
                 vram[--sp] = bc & 0xff;
                 ++pc;
                 break;
             }
             case 0xD5: {
+                clock += 16;
                 vram[--sp] = de >> 8;
                 vram[--sp] = de & 0xff;
                 ++pc;
                 break;
             }
             case 0xE5: {
+                clock += 16;
                 vram[--sp] = hl >> 8;
                 vram[--sp] = hl & 0xff;
                 ++pc;
                 break;
             }
             case 0xF5: {
+                clock += 16;
                 vram[--sp] = af >> 8;
                 vram[--sp] = af & 0xff;
                 ++pc;
                 break;
             }
             case 0x17: {
+                clock += 4;
                 uint8_t &reg = a;
                 bool carryFlag = reg >> 7;
                 reg = (reg << 1) | f.cy;
@@ -619,28 +692,31 @@ public:
                 f.cy = carryFlag;
                 pc += 2;
                 break;
-
             }
             case 0xC1:
             case 0xD1:
             case 0xE1:
             case 0xF1: {
+                clock += 12;
                 bc = ((uint16_t) (vram[sp + 1]) << 8) | vram[sp];
                 sp += 2;
                 ++pc;
                 break;
             }
             case 0x22: {
+                clock += 8;
                 vram[hl++] = a;
                 ++pc;
                 break;
             }
             case 0xC9: {
+                clock += 16;
                 pc = ((uint16_t) vram[sp + 1] << 8) | vram[sp];
                 sp += 2;
                 break;
             }
             case 0xBE: {
+                clock += 8;
                 uint8_t data = vram[hl];
                 bool result = a - data;
                 f.zf = result == 0;
@@ -651,6 +727,7 @@ public:
                 break;
             }
             case 0x86: {
+                clock += 8;
                 uint8_t data = vram[hl];
                 uint8_t result = a + data;
                 f.zf = result == 0;
@@ -660,6 +737,7 @@ public:
                 a = result;
                 ++pc;
                 break;
+
             }
         }
     }
@@ -676,7 +754,7 @@ public:
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
 
-    vector<sf::Uint8>& pixels;
+    vector<sf::Uint8> &pixels;
     vector<uint8_t> vram; // reserve 8KB
 
     uint8_t scx;
@@ -691,7 +769,7 @@ public:
 
     uint64_t clock;
 
-    PPU(const string &bootROM, vector<sf::Uint8>& pixels): pixels{pixels} {
+    PPU(const string &bootROM, vector<sf::Uint8> &pixels) : pixels{pixels} {
 #ifdef DEBUG
         debugInitializeCartridgeHeader();
 #endif
@@ -927,13 +1005,13 @@ public:
 
 
                 ppu.oamSearch();
-                while(cpu.clock < ppu.clock) {
+                while (cpu.clock < ppu.clock) {
                     cpu.fetchDecodeExecute();
                 }
 
                 ppu.lcdStatus.modeFlag = 3;
                 ppu.pixelTransfer(i);
-                while(cpu.clock < ppu.clock) {
+                while (cpu.clock < ppu.clock) {
                     cpu.fetchDecodeExecute();
                 }
 
@@ -942,7 +1020,7 @@ public:
                     ppu.hblankInterrupt();
                 }
                 ppu.hBlank();
-                while(cpu.clock < ppu.clock) {
+                while (cpu.clock < ppu.clock) {
                     cpu.fetchDecodeExecute();
                 }
             }
@@ -951,7 +1029,7 @@ public:
                 ppu.vBlankInterrupt();
             }
             ppu.vblank();
-            while(cpu.clock < ppu.clock) {
+            while (cpu.clock < ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
 
@@ -1028,6 +1106,5 @@ int main() {
 ...   outputLines.append(c)
 
  */
-
 
 
