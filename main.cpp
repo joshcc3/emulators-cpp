@@ -1,16 +1,15 @@
 #include <iostream>
-
 #include "chip8.h"
 #include <cstdint>
 #include <bitset>
 #include <vector>
 #include <bit>
-#include<unistd.h>
-
-
+#include <unistd.h>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
-
+#include <math.h>
+#include <SFML/Audio.hpp>
+#include <AL/alc.h>
 
 using namespace std;
 
