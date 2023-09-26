@@ -21,37 +21,38 @@
 #include <array>
 #include <cassert>
 #include <fstream>
+#include <unistd.h>
 
 using namespace std;
 
 struct LCDControl {
-    bool lcdEnabled: 1;
-    bool windowTileMapDisplaySelect: 1;
-    bool windowDispEnabled: 1;
-    bool bgWindowTileDataSelect: 1;
-    bool bgTileMapDisplaySelect: 1;
-    bool objSpriteSize: 1;
-    bool objSpriteDisplayEnable: 1;
     bool bgDisplayEnabled: 1;
+    bool objSpriteDisplayEnable: 1;
+    bool objSpriteSize: 1;
+    bool bgTileMapDisplaySelect: 1;
+    bool bgWindowTileDataSelect: 1;
+    bool windowDispEnabled: 1;
+    bool windowTileMapDisplaySelect: 1;
+    bool lcdEnabled: 1;
 
 };
 
 struct LCDStatus {
-    bool unusued: 1;
-    bool coincidenceInterrupt: 1;
-    bool oamInterrupt: 1;
-    bool vblankInterrupt: 1;
-    bool hblankInterrupt: 1;
-    bool coincidenceFlag: 1;
     uint8_t modeFlag: 2;
+    bool coincidenceFlag: 1;
+    bool hblankInterrupt: 1;
+    bool vblankInterrupt: 1;
+    bool oamInterrupt: 1;
+    bool coincidenceInterrupt: 1;
+    bool unused: 1;
 };
 
 struct FlagReg {
-    bool zf: 1;
-    bool n: 1;
-    bool h: 1;
-    bool cy: 1;
     bool unused: 4;
+    bool cy: 1;
+    bool h: 1;
+    bool n: 1;
+    bool zf: 1;
 };
 
 class CPU {
@@ -766,11 +767,18 @@ public:
                 uint16_t addr = ((uint16_t) (vram[pc + 2]) << 8) | vram[pc + 1];
                 vram[addr] = a;
                 pc += 3;
+                clock += 8;
                 break;
             }
             case 0x28: {
                 auto relJump = static_cast<::int8_t>(vram[pc + 1]);
-                pc += 2 + relJump;
+                if(f.zf) {
+                    pc += 2 + relJump;
+                    clock += 12;
+                } else {
+                    pc += 2;
+                    clock += 12;
+                }
                 break;
             }
             case 0x04:
@@ -781,7 +789,9 @@ public:
                 f.zf = (reg + 1 == 0);
                 f.n = false;
                 f.h = ((reg & 0xf) == 0xf);
+                ++reg;
                 ++pc;
+                clock += 4;
                 break;
             }
             default: {
@@ -857,7 +867,7 @@ public:
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
                 int pixelY = ((y + scy) % 256);
                 int pixelX = (x + scx) % 256;
-                int tile = (pixelY / 8  * 8 + pixelX / 8);
+                int tile = (pixelY / 8  * 32 + pixelX / 8);
                 uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
                 int c = (color >> (2 * (pixelX % 8))) & 3;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
@@ -886,10 +896,10 @@ public:
 
     }
 
-    const uint8_t pixelColor[4][4] = {{0xff, 0xff, 0xff, 0x88},
-                                      {0xbb, 0xbb, 0xbb, 0x88},
-                                      {0x88, 0x88, 0x88, 0x88},
-                                      {0x00, 0x00, 0x00, 0x88}};
+    const uint8_t pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
+                                      {0xbb, 0xbb, 0xbb, 0xff},
+                                      {0x88, 0x88, 0x88, 0xff},
+                                      {0x00, 0x00, 0x00, 0xff}};
 
     [[nodiscard]] const uint8_t *colorisePixel(uint8_t reg, uint8_t pixel) const {
         // for some regs, 00 is transparent
@@ -908,11 +918,11 @@ public:
     }
 
     struct OAMFlags {
-        uint8_t objToBGPrio: 1;
-        uint8_t yFlip: 1;
-        uint8_t xFlip: 1;
-        uint8_t palette: 1;
         uint8_t unused: 4;
+        uint8_t palette: 1;
+        uint8_t xFlip: 1;
+        uint8_t yFlip: 1;
+        uint8_t objToBGPrio: 1;
     };
     struct OAMEntry {
         uint8_t yPos;
@@ -940,7 +950,7 @@ public:
         return colorData;
     }
 
-    uint16_t getBackgroundTileMapDataRow(uint8_t ix, int row) {
+    uint16_t getBackgroundTileMapDataRow(int ix, int row) {
         assert(lcdControl.bgDisplayEnabled);
         if (lcdControl.bgWindowTileDataSelect) {
             uint8_t tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
@@ -1108,6 +1118,7 @@ public:
             cpu.clock = cpu.clock & ((1 << 22) - 1);
             ppu.clock = ppu.clock & ((1 << 22) - 1);
         }
+
 
     }
 };
