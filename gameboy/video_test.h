@@ -772,7 +772,7 @@ public:
             }
             case 0x28: {
                 auto relJump = static_cast<::int8_t>(vram[pc + 1]);
-                if(f.zf) {
+                if (f.zf) {
                     pc += 2 + relJump;
                     clock += 12;
                 } else {
@@ -807,8 +807,8 @@ public:
     constexpr static int PIXEL_COLUMNS = 160;
     constexpr static int PIXEL_ROWS = 144;
 
-    constexpr static int DEVICE_RESOLUTION_X = 3;
-    constexpr static int DEVICE_RESOLUTION_Y = 3;
+    constexpr static int DEVICE_RESOLUTION_X = 2;
+    constexpr static int DEVICE_RESOLUTION_Y = 2;
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
@@ -843,7 +843,6 @@ public:
 #endif
         std::ifstream input(bootROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
-        int z = 0;
     }
 
 
@@ -867,9 +866,9 @@ public:
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
                 int pixelY = ((y + scy) % 256);
                 int pixelX = (x + scx) % 256;
-                int tile = (pixelY / 8  * 32 + pixelX / 8);
+                int tile = (pixelY / 8 * 32 + pixelX / 8);
                 uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
-                int c = (color >> (2 * (pixelX % 8))) & 3;
+                int c = (color >> (2 * (7 - pixelX % 8))) & 3;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
                 drawColorToScreen(x, y, outputColor);
             }
@@ -943,6 +942,7 @@ public:
     }
 
     uint16_t getTileData(int tile, int row, uint16_t addrStart) {
+
         int rowStride = 2;
         uint16_t rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
         uint16_t colorData = (((uint16_t) vram[rowStart + 1]) << 8) | vram[rowStart];
@@ -979,10 +979,11 @@ public:
         vram[0x100] = 0;
         vram[0x102] = 0;
 
-        array<uint8_t, 48> nintendoHeaderBmp = {
+        array<uint8_t, 56> nintendoHeaderBmp = {
                 0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
                 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
-                0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E
+                0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+                0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C
         };
 
         for (int i = 0; i < nintendoHeaderBmp.size(); ++i) {
