@@ -93,7 +93,7 @@ public:
     }
 
     uint32_t fetchDecodeExecute() {
-        uint8_t r[7] = {3, 2, 5, 4, 7, 6, 1};
+        uint8_t r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
         uint8_t opcode = vram[pc];
         switch (opcode) {
 
@@ -128,9 +128,9 @@ public:
                 break;
 
             case 0x20: {
-                if (f.zf != 0) {
+                if (!f.zf) {
                     int8_t relativeOffset = vram[pc + 1];
-                    pc = pc + relativeOffset;
+                    pc = pc + 2 + relativeOffset;
                     clock += 12;
                 } else {
                     pc += 2;
@@ -153,9 +153,11 @@ public:
                     case 0x13:
                     case 0x14:
                     case 0x15:
-                    case 0x17:
+                    case 0x17: {
                         clock += 4;
-                        uint8_t &reg = r[opcode - 0x10];
+
+                        uint8_t &reg = registers[r[vram[pc + 1] - 0x10]];
+
                         bool carryFlag = reg >> 7;
                         reg = (reg << 1) | f.cy;
                         f.zf = reg == 0;
@@ -164,6 +166,9 @@ public:
                         f.cy = carryFlag;
                         pc += 2;
                         break;
+                    }
+                    default:
+                        throw "Not implemented";
                 }
                 break;
             case 0xA0:
@@ -307,17 +312,37 @@ public:
             case 0xE2: {
                 clock += 8;
                 vram[0xFF00 + c] = a;
-                pc += 1;
+                ++pc;
                 break;
             }
-            case 0x0C: {
+            case 0x0C:
+            case 0x1C:
+            case 0x2C:
+            case 0x3C: {
+                uint8_t m[4] = {2, 4, 6, 1};
+                uint8_t &reg = registers[m[(opcode >> 4)]];
                 clock += 4;
-                f.zf = (c + 1) == 0;
+                f.zf = (reg + 1) == 0;
                 f.n = false;
-                f.h = (c & 0xf) == 0xf;
-                f.cy = (c + 1) == 0;
-                ++c;
-                pc += 1;
+                f.h = (reg & 0xf) == 0xf;
+                f.cy = (reg + 1) == 0;
+                ++reg;
+                ++pc;
+                break;
+            }
+            case 0x0D:
+            case 0x1D:
+            case 0x2D:
+            case 0x3D: {
+                uint8_t m[4] = {2, 4, 6, 1};
+                uint8_t &reg = registers[m[(opcode >> 4)]];
+                clock += 4;
+                f.zf = (reg - 1) == 0;
+                f.n = true;
+                f.h = (reg & 0xf) == 0x0;
+                f.cy = reg == 0;
+                --reg;
+                ++pc;
                 break;
             }
             case 0x70: {
@@ -376,9 +401,9 @@ public:
             }
             case 0xCD: {
                 clock += 24;
-                uint16_t jumpAddr = ((uint16_t) (vram[pc + 1]) << 8) | (vram[pc + 2]);
-                vram[--sp] = pc >> 8;
-                vram[--sp] = pc & 0xff;
+                uint16_t jumpAddr = ((uint16_t) (vram[pc + 2]) << 8) | (vram[pc + 1]);
+                vram[--sp] = (pc + 3) >> 8;
+                vram[--sp] = (pc + 3) & 0xff;
                 pc = jumpAddr;
                 break;
             }
@@ -562,7 +587,7 @@ public:
             case 0x7f: {
                 clock += 4;
                 uint8_t o[4] = {2, 4, 6, 1};
-                registers[o[(opcode >> 4) - 4]] = registers[r[opcode - 0x48]];
+                registers[o[(opcode >> 4) - 4]] = registers[r[(opcode & 0xf) - 0x8]];
                 ++pc;
                 break;
             }
@@ -584,8 +609,7 @@ public:
             case 0x95:
             case 0x97: {
                 clock += 4;
-                uint8_t r[7] = {3, 2, 5, 4, 7, 6, 1};
-                uint8_t &opReg = registers[r[opcode - 0x48]];
+                uint8_t &opReg = registers[r[(opcode & 0xf)]];
                 uint8_t result = a - opReg;
                 f.zf = a == 0;
                 f.n = true;
@@ -597,7 +621,7 @@ public:
             }
             case 0xF0: {
                 clock += 12;
-                a = vram[0xFF00 | (pc + 1)];
+                a = vram[0xFF00 | vram[pc + 1]];
                 pc += 2;
                 break;
             }
@@ -651,7 +675,7 @@ public:
             }
             case 0x18: {
                 clock += 12;
-                pc = pc + (int8_t) (vram[pc + 1]);
+                pc = pc + 2 + (int8_t) (vram[pc + 1]);
                 break;
             }
             case 0xC5: {
@@ -691,7 +715,7 @@ public:
                 f.n = false;
                 f.h = false;
                 f.cy = carryFlag;
-                pc += 2;
+                ++pc;
                 break;
             }
             case 0xC1:
@@ -740,6 +764,20 @@ public:
                 break;
 
             }
+            case 0xEA: {
+                uint16_t addr = ((uint16_t) (vram[pc + 2]) << 8) | vram[pc + 1];
+                vram[addr] = a;
+                pc += 3;
+                break;
+            }
+            case 0x28: {
+                auto relJump = static_cast<::int8_t>(vram[pc + 1]);
+                pc += 2 + relJump;
+                break;
+            }
+            default: {
+                throw "Not implemented";
+            }
         }
     }
 
@@ -756,28 +794,32 @@ public:
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
 
     vector<sf::Uint8> &pixels;
-    vector<uint8_t> vram; // reserve 8KB
+    vector<uint8_t> &vram; // reserve 8KB
 
-    uint8_t scx;
-    uint8_t scy;
-    uint8_t wx;
-    uint8_t wy;
-    uint8_t dma;
-    uint8_t bgp;
+    uint8_t &scx;
+    uint8_t &scy;
+    uint8_t &wx;
+    uint8_t &wy;
+    uint8_t &dma;
+    uint8_t &bgp;
 
-    LCDControl lcdControl;
-    LCDStatus lcdStatus;
+    LCDControl &lcdControl;
+    LCDStatus &lcdStatus;
 
     uint64_t clock;
 
-    PPU(const string &bootROM, vector<sf::Uint8> &pixels)
-            : pixels{pixels}, scx{0}, scy{0}, wx{0}, wy{0}, dma{0}, bgp{0} {
+    PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<uint8_t> &ram)
+            : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, wx{vram[0xFF4B]}, wy{vram[0xFF4A]},
+              dma{vram[0xFF46]}, bgp{vram[0xFF47]},
+              lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
+              lcdStatus{*reinterpret_cast<LCDStatus *>(&vram[0xFF41])},
+              vram(ram), clock{0} {
 #ifdef DEBUG
         debugInitializeCartridgeHeader();
 #endif
         std::ifstream input(bootROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
-
+        int z = 0;
     }
 
 
@@ -984,16 +1026,18 @@ public:
 
 class gb_emu {
 public:
+
+    vector<uint8_t> ram;
     PPU ppu;
     CPU cpu;
 
-    gb_emu(const string &bootRom, vector<uint8_t> &pixels) : ppu{bootRom, pixels}, cpu{ppu.vram} {
-    }
+    gb_emu(const string &bootRom, vector<uint8_t> &pixels) : ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram} {}
 
     void run() {
+
         // need to set the status registers:
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
-            // all following clock cycles in 4MHz
+            // all following clockx %x %x cycles in 4MHz
             // should take 1/60th of a second at 1Mhz
 
             // must update lcdc status, and trigger interrupts
@@ -1005,13 +1049,13 @@ public:
 
 
             ppu.oamSearch();
-            while (cpu.clock < ppu.clock) {
+            while (cpu.clock <= ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
 
             ppu.lcdStatus.modeFlag = 3;
             ppu.pixelTransfer(i);
-            while (cpu.clock < ppu.clock) {
+            while (cpu.clock <= ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
 
@@ -1020,7 +1064,7 @@ public:
                 ppu.hblankInterrupt();
             }
             ppu.hBlank();
-            while (cpu.clock < ppu.clock) {
+            while (cpu.clock <= ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
         }
@@ -1029,8 +1073,13 @@ public:
             ppu.vBlankInterrupt();
         }
         ppu.vblank();
-        while (cpu.clock < ppu.clock) {
+        while (cpu.clock <= ppu.clock) {
             cpu.fetchDecodeExecute();
+        }
+
+        if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22)) {
+            cpu.clock = cpu.clock & ((1 << 22) - 1);
+            ppu.clock = ppu.clock & ((1 << 22) - 1);
         }
 
     }
@@ -1038,7 +1087,8 @@ public:
 
 int main() {
 
-    cout << '\a' << endl;
+    printf("Starting\n");
+
     constexpr uint32_t RANDOM_GEN_SEED = 0x7645387a;
     constexpr int WIDTH = 640;
     constexpr int HEIGHT = 320;
@@ -1058,6 +1108,7 @@ int main() {
         cerr << "Could not create texture, quitting." << endl;
         exit(1);
     }
+
 
     vector<sf::Event> events;
     events.reserve(100);
@@ -1082,6 +1133,8 @@ int main() {
         w.clear(sf::Color::Black);
 
         ++instructionCount;
+
+        emu.run();
 
         texture.update(&pixels[0]);
         w.draw(sprite);
