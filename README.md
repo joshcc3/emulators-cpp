@@ -44,7 +44,7 @@ https://gekkio.fi/files/gb-docs/gbctr.pdf
 
 https://ez80.readthedocs.io/en/latest/docs/bit-shifts/rla.html
 
-
+https://raw.githubusercontent.com/lmmendes/game-boy-opcodes/master/opcodes.json
 
 Questions
 ---
