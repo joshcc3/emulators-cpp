@@ -5,6 +5,7 @@
 #ifndef GBA_EMULATOR_VIDEO_TEST_H
 #define GBA_EMULATOR_VIDEO_TEST_H
 
+#define DEBUG
 
 #include <iostream>
 #include <cstdint>
@@ -143,7 +144,7 @@ public:
                     case 0x7C:
                         clock += 4;
                         f.zf = h >> 7;
-                        f.h = 1;
+                        f.h = true;
                         pc += 2;
                         break;
                     case 0x10:
@@ -158,8 +159,8 @@ public:
                         bool carryFlag = reg >> 7;
                         reg = (reg << 1) | f.cy;
                         f.zf = reg == 0;
-                        f.n = 0;
-                        f.h = 0;
+                        f.n = false;
+                        f.h = false;
                         f.cy = carryFlag;
                         pc += 2;
                         break;
@@ -168,56 +169,56 @@ public:
             case 0xA0:
                 clock += 4;
                 a = a & b;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA1:
                 clock += 4;
                 a = a & c;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA2:
                 clock += 4;
                 a = a & d;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA3:
                 clock += 4;
                 a = a & e;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA4:
                 clock += 4;
                 a = a & h;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA5:
                 clock += 4;
                 a = a & l;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA6:
                 clock += 8;
                 a = a & vram[hl];
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
             case 0xA7:
                 clock += 4;
                 a = a & a;
-                f.h = 1;
+                f.h = true;
                 f.zf = a == 0;
                 ++pc;
                 break;
@@ -312,7 +313,7 @@ public:
             case 0x0C: {
                 clock += 4;
                 f.zf = (c + 1) == 0;
-                f.n = 0;
+                f.n = false;
                 f.h = (c & 0xf) == 0xf;
                 f.cy = (c + 1) == 0;
                 ++c;
@@ -569,7 +570,7 @@ public:
                 clock += 8;
                 int res = a - vram[pc + 1];
                 f.zf = res == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (a & 0xf) < (vram[pc + 1] & 0xf);
                 f.cy = a < vram[pc + 1];
                 pc += 2;
@@ -587,7 +588,7 @@ public:
                 uint8_t &opReg = registers[r[opcode - 0x48]];
                 uint8_t result = a - opReg;
                 f.zf = a == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (a & 0xf) < (opReg & 0xf);
                 f.cy = a < opReg;
                 a = result;
@@ -604,7 +605,7 @@ public:
                 clock += 4;
                 uint8_t &reg = b;
                 f.zf = (reg - 1) == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (reg & 0xf) == 0;
                 --reg;
                 ++pc;
@@ -614,7 +615,7 @@ public:
                 clock += 4;
                 uint8_t &reg = d;
                 f.zf = (reg - 1) == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (reg & 0xf) == 0;
                 --reg;
                 ++pc;
@@ -624,7 +625,7 @@ public:
                 clock += 4;
                 uint8_t &reg = h;
                 f.zf = (reg - 1) == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (reg & 0xf) == 0;
                 --reg;
                 ++pc;
@@ -686,9 +687,9 @@ public:
                 uint8_t &reg = a;
                 bool carryFlag = reg >> 7;
                 reg = (reg << 1) | f.cy;
-                f.zf = 0;
-                f.n = 0;
-                f.h = 0;
+                f.zf = false;
+                f.n = false;
+                f.h = false;
                 f.cy = carryFlag;
                 pc += 2;
                 break;
@@ -720,7 +721,7 @@ public:
                 uint8_t data = vram[hl];
                 bool result = a - data;
                 f.zf = result == 0;
-                f.n = 1;
+                f.n = true;
                 f.h = (a & 0xf) < (data & 0xf);
                 f.cy = a < data;
                 ++pc;
@@ -731,7 +732,7 @@ public:
                 uint8_t data = vram[hl];
                 uint8_t result = a + data;
                 f.zf = result == 0;
-                f.n = 0;
+                f.n = false;
                 f.h = (0xf - (a & 0xf)) > (data & 0xf);
                 f.cy = 0xff - a > data;
                 a = result;
@@ -769,7 +770,8 @@ public:
 
     uint64_t clock;
 
-    PPU(const string &bootROM, vector<sf::Uint8> &pixels) : pixels{pixels} {
+    PPU(const string &bootROM, vector<sf::Uint8> &pixels)
+            : pixels{pixels}, scx{0}, scy{0}, wx{0}, wy{0}, dma{0}, bgp{0} {
 #ifdef DEBUG
         debugInitializeCartridgeHeader();
 #endif
@@ -888,7 +890,7 @@ public:
             uint8_t tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
             return getTileData(tile, row, 0x8000);
         } else {
-            int8_t tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
+            auto tile = static_cast<int8_t>(lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
             return getTileData(tile, row, 0x9000);
         }
     }
@@ -934,23 +936,23 @@ public:
     }
 
 
-    bool isPixelTransfer() {
+    [[nodiscard]] bool isPixelTransfer() const noexcept {
         return lcdStatus.modeFlag == 3;
     }
 
-    bool isHblank() {
+    [[nodiscard]] bool isHblank() const noexcept {
         return lcdStatus.modeFlag == 0;
     }
 
-    bool isVblank() {
+    [[nodiscard]] bool isVblank() const noexcept {
         return lcdStatus.modeFlag == 1;
     }
 
-    bool vramAccessLegal() {
+    bool vramAccessLegal() const {
         return !isPixelTransfer();
     }
 
-    bool oamAccessLegal() {
+    bool oamAccessLegal() const {
         return isHblank() || isVblank();
     }
 
@@ -985,55 +987,52 @@ public:
     PPU ppu;
     CPU cpu;
 
-    gb_emu(const string &bootRom) : ppu{bootRom}, cpu{ppu.vram} {
+    gb_emu(const string &bootRom, vector<uint8_t> &pixels) : ppu{bootRom, pixels}, cpu{ppu.vram} {
     }
 
     void run() {
-        uint32_t clockCount = 0;
-        while (true) {
-            // need to set the status registers:
-            for (int i = 0; i < ppu.PIXEL_ROWS; ++i) {
-                // all following clock cycles in 4MHz
-                // should take 1/60th of a second at 1Mhz
+        // need to set the status registers:
+        for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
+            // all following clock cycles in 4MHz
+            // should take 1/60th of a second at 1Mhz
 
-                // must update lcdc status, and trigger interrupts
+            // must update lcdc status, and trigger interrupts
 
-                ppu.lcdStatus.modeFlag = 2;
-                if (ppu.lcdStatus.oamInterrupt) {
-                    ppu.oamInterrupt();
-                }
-
-
-                ppu.oamSearch();
-                while (cpu.clock < ppu.clock) {
-                    cpu.fetchDecodeExecute();
-                }
-
-                ppu.lcdStatus.modeFlag = 3;
-                ppu.pixelTransfer(i);
-                while (cpu.clock < ppu.clock) {
-                    cpu.fetchDecodeExecute();
-                }
-
-                ppu.lcdStatus.modeFlag = 0;
-                if (ppu.lcdStatus.hblankInterrupt) {
-                    ppu.hblankInterrupt();
-                }
-                ppu.hBlank();
-                while (cpu.clock < ppu.clock) {
-                    cpu.fetchDecodeExecute();
-                }
+            ppu.lcdStatus.modeFlag = 2;
+            if (ppu.lcdStatus.oamInterrupt) {
+                ppu.oamInterrupt();
             }
-            ppu.lcdStatus.modeFlag = 1;
-            if (ppu.lcdStatus.vblankInterrupt) {
-                ppu.vBlankInterrupt();
-            }
-            ppu.vblank();
+
+
+            ppu.oamSearch();
             while (cpu.clock < ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
 
+            ppu.lcdStatus.modeFlag = 3;
+            ppu.pixelTransfer(i);
+            while (cpu.clock < ppu.clock) {
+                cpu.fetchDecodeExecute();
+            }
+
+            ppu.lcdStatus.modeFlag = 0;
+            if (ppu.lcdStatus.hblankInterrupt) {
+                ppu.hblankInterrupt();
+            }
+            ppu.hBlank();
+            while (cpu.clock < ppu.clock) {
+                cpu.fetchDecodeExecute();
+            }
         }
+        ppu.lcdStatus.modeFlag = 1;
+        if (ppu.lcdStatus.vblankInterrupt) {
+            ppu.vBlankInterrupt();
+        }
+        ppu.vblank();
+        while (cpu.clock < ppu.clock) {
+            cpu.fetchDecodeExecute();
+        }
+
     }
 };
 
@@ -1065,6 +1064,8 @@ int main() {
 
     sf::Sprite sprite;
     sprite.setTexture(texture);
+
+    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin", pixels};
 
     int instructionCount = 0;
 
