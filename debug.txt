@@ -1,0 +1,36 @@
+experiences:
+excited
+looking for
+
+
+market making, dma, trader management, 
+
+
+openal-info - lists devices
+lsmod - lists all the drivers:
+lspci - lists the peripherals
+
+
+alsamixer
+
+ALSA lib ../../pulse/pulse.c:242:(pulse_connect) PulseAudio: Unable to connect: Connection refused
+
+[jc@fedora untitled]$ g++ -o test test2.cpp -lasound && ./test 
+
+
+https://alsa.opensrc.org/Proc_asound_documentation
+https://askubuntu.com/questions/426983/how-can-i-tell-if-im-using-alsa-or-pulse-audio-by-default-switching-to-i3-wm
+
+
+in order to find the pkgconfig for an installed package - it will help to say the following:
+$(pkg-config --cflags --libs libpipewire-0.3)
+sh-5.1$ mv main main.tmp; g++ -Wall main.cpp -o main -lm $(pkg-config --cflags --libs libpipewire-0.3) && ./main
+
+
+intel_hda - 
+
+
+I added a alsoft.conf file to indicate that realtime priority is not critical.
+https://github.com/kcat/openal-soft/issues/596
+
+seems to be an issue with setting thread priority not allowed on linux? maybe it should be given that capability.
