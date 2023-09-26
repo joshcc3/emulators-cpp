@@ -797,10 +797,11 @@ public:
     constexpr static int PIXEL_COLUMNS = 160;
     constexpr static int PIXEL_ROWS = 144;
 
-    constexpr static int DEVICE_RESOLUTION_X = 10;
-    constexpr static int DEVICE_RESOLUTION_Y = 10;
+    constexpr static int DEVICE_RESOLUTION_X = 3;
+    constexpr static int DEVICE_RESOLUTION_Y = 3;
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
+    constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
 
     vector<sf::Uint8> &pixels;
     vector<uint8_t> &vram; // reserve 8KB
@@ -856,7 +857,7 @@ public:
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
                 int pixelY = ((y + scy) % 256);
                 int pixelX = (x + scx) % 256;
-                int tile = (pixelY * 256 + pixelX) / 8;
+                int tile = (pixelY / 8  * 8 + pixelX / 8);
                 uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
                 int c = (color >> (2 * (pixelX % 8))) & 3;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
@@ -1116,21 +1117,19 @@ int main() {
     printf("Starting\n");
 
     constexpr uint32_t RANDOM_GEN_SEED = 0x7645387a;
-    constexpr int WIDTH = 640;
-    constexpr int HEIGHT = 320;
 
     srand(RANDOM_GEN_SEED);
 
-    sf::RenderWindow w{sf::VideoMode(WIDTH, HEIGHT), "Test", sf::Style::Default};
+    sf::RenderWindow w{sf::VideoMode(PPU::DEVICE_WIDTH, PPU::DEVICE_HEIGHT), "Test", sf::Style::Default};
 
-    vector<sf::Uint8> pixels(WIDTH * HEIGHT * 4, 0);
+    vector<sf::Uint8> pixels(PPU::DEVICE_WIDTH * PPU::DEVICE_HEIGHT * 4, 0);
 
     //    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\ibm_logo.ch8", HEIGHT, WIDTH, pixels};
 //    chip8 emu{"/home/jc/projects/cpp/emulators-cpp/tetris.ch8", HEIGHT, WIDTH, pixels};
 
 
     sf::Texture texture;
-    if (!texture.create(WIDTH, HEIGHT)) {
+    if (!texture.create(PPU::DEVICE_WIDTH, PPU::DEVICE_HEIGHT)) {
         cerr << "Could not create texture, quitting." << endl;
         exit(1);
     }
