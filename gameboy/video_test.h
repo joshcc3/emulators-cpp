@@ -22,6 +22,9 @@
 #include <cassert>
 #include <fstream>
 #include <unistd.h>
+#include "audio_driver.h"
+
+#define SLEEP_INTERVAL 1000000/59
 
 using namespace std;
 
@@ -38,7 +41,7 @@ struct LCDControl {
 };
 
 struct LCDStatus {
-    uint8_t modeFlag: 2;
+    u8 modeFlag: 2;
     bool coincidenceFlag: 1;
     bool hblankInterrupt: 1;
     bool vblankInterrupt: 1;
@@ -57,28 +60,28 @@ struct FlagReg {
 
 class CPU {
 public:
-    uint8_t registers[8];
-    uint8_t &a = registers[1];
+    u8 registers[8];
+    u8 &a = registers[1];
     FlagReg &f = (FlagReg &) registers[0];
-    uint8_t &b = registers[3];
-    uint8_t &c = registers[2];
-    uint8_t &d = registers[5];
-    uint8_t &e = registers[4];
-    uint8_t &h = registers[7];
-    uint8_t &l = registers[6];
-    uint16_t &af = (uint16_t &) registers;
-    uint16_t &bc = (uint16_t &) (registers[2]);
-    uint16_t &de = (uint16_t &) (registers[4]);
-    uint16_t &hl = (uint16_t &) (registers[6]);
+    u8 &b = registers[3];
+    u8 &c = registers[2];
+    u8 &d = registers[5];
+    u8 &e = registers[4];
+    u8 &h = registers[7];
+    u8 &l = registers[6];
+    u16 &af = (u16 &) registers;
+    u16 &bc = (u16 &) (registers[2]);
+    u16 &de = (u16 &) (registers[4]);
+    u16 &hl = (u16 &) (registers[6]);
 
-    uint16_t sp;
-    uint16_t pc;
+    u16 sp;
+    u16 pc;
 
     uint64_t clock;
 
-    vector<uint8_t> &vram;
+    vector<u8> &vram;
 
-    CPU(vector<uint8_t> &vram) : vram{vram} {
+    CPU(vector<u8> &vram) : vram{vram} {
         initializeRegisters();
         clock = 0;
     }
@@ -93,32 +96,32 @@ public:
 
     }
 
-    uint32_t fetchDecodeExecute() {
-        uint8_t r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
-        uint8_t opcode = vram[pc];
+    void fetchDecodeExecute() {
+        u8 r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
+        u8 opcode = vram[pc];
         switch (opcode) {
 
             case 0x01: // ld sp 0x
                 clock += 12;
-                bc = (uint16_t &) (vram[pc + 1]);
+                bc = (u16 &) (vram[pc + 1]);
                 pc += 3;
                 break;
 
             case 0x11:
                 clock += 12;
-                de = (uint16_t &) (vram[pc + 1]);
+                de = (u16 &) (vram[pc + 1]);
                 pc += 3;
                 break;
 
             case 0x21:
                 clock += 12;
-                hl = (uint16_t &) (vram[pc + 1]);
+                hl = (u16 &) (vram[pc + 1]);
                 pc += 3;
                 break;
 
             case 0x31:
                 clock += 12;
-                sp = (uint16_t &) (vram[pc + 1]);
+                sp = (u16 &) (vram[pc + 1]);
                 pc += 3;
                 break;
 
@@ -157,7 +160,7 @@ public:
                     case 0x17: {
                         clock += 4;
 
-                        uint8_t &reg = registers[r[vram[pc + 1] - 0x10]];
+                        u8 &reg = registers[r[vram[pc + 1] - 0x10]];
 
                         bool carryFlag = reg >> 7;
                         reg = (reg << 1) | f.cy;
@@ -278,28 +281,28 @@ public:
                 break;
             case 0x0E: {
                 clock += 8;
-                uint8_t d8 = vram[pc + 1];
+                u8 d8 = vram[pc + 1];
                 c = d8;
                 pc += 2;
                 break;
             }
             case 0x1E: {
                 clock += 8;
-                uint8_t d8 = vram[pc + 1];
+                u8 d8 = vram[pc + 1];
                 e = d8;
                 pc += 2;
                 break;
             }
             case 0x2E: {
                 clock += 8;
-                uint8_t d8 = vram[pc + 1];
+                u8 d8 = vram[pc + 1];
                 l = d8;
                 pc += 2;
                 break;
             }
             case 0x3E: {
                 clock += 8;
-                uint8_t d8 = vram[pc + 1];
+                u8 d8 = vram[pc + 1];
                 a = d8;
                 pc += 2;
                 break;
@@ -320,8 +323,8 @@ public:
             case 0x1C:
             case 0x2C:
             case 0x3C: {
-                uint8_t m[4] = {2, 4, 6, 1};
-                uint8_t &reg = registers[m[(opcode >> 4)]];
+                u8 m[4] = {2, 4, 6, 1};
+                u8 &reg = registers[m[(opcode >> 4)]];
                 clock += 4;
                 f.zf = (reg + 1) == 0;
                 f.n = false;
@@ -334,8 +337,8 @@ public:
             case 0x1D:
             case 0x2D:
             case 0x3D: {
-                uint8_t m[4] = {2, 4, 6, 1};
-                uint8_t &reg = registers[m[(opcode >> 4)]];
+                u8 m[4] = {2, 4, 6, 1};
+                u8 &reg = registers[m[(opcode >> 4)]];
                 clock += 4;
                 f.zf = (reg - 1) == 0;
                 f.n = true;
@@ -404,7 +407,7 @@ public:
             }
             case 0xCD: {
                 clock += 24;
-                uint16_t jumpAddr = ((uint16_t) (vram[pc + 2]) << 8) | (vram[pc + 1]);
+                u16 jumpAddr = ((u16) (vram[pc + 2]) << 8) | (vram[pc + 1]);
                 vram[--sp] = (pc + 3) >> 8;
                 vram[--sp] = (pc + 3) & 0xff;
                 pc = jumpAddr;
@@ -589,7 +592,7 @@ public:
             case 0x7d:
             case 0x7f: {
                 clock += 4;
-                uint8_t o[4] = {2, 4, 6, 1};
+                u8 o[4] = {2, 4, 6, 1};
                 registers[o[(opcode >> 4) - 4]] = registers[r[(opcode & 0xf) - 0x8]];
                 ++pc;
                 break;
@@ -612,8 +615,8 @@ public:
             case 0x95:
             case 0x97: {
                 clock += 4;
-                uint8_t &opReg = registers[r[(opcode & 0xf)]];
-                uint8_t result = a - opReg;
+                u8 &opReg = registers[r[(opcode & 0xf)]];
+                u8 result = a - opReg;
                 f.zf = a == 0;
                 f.n = true;
                 f.h = (a & 0xf) < (opReg & 0xf);
@@ -630,7 +633,7 @@ public:
             }
             case 0x05: {
                 clock += 4;
-                uint8_t &reg = b;
+                u8 &reg = b;
                 f.zf = (reg - 1) == 0;
                 f.n = true;
                 f.h = (reg & 0xf) == 0;
@@ -640,7 +643,7 @@ public:
             }
             case 0x15: {
                 clock += 4;
-                uint8_t &reg = d;
+                u8 &reg = d;
                 f.zf = (reg - 1) == 0;
                 f.n = true;
                 f.h = (reg & 0xf) == 0;
@@ -650,7 +653,7 @@ public:
             }
             case 0x25: {
                 clock += 4;
-                uint8_t &reg = h;
+                u8 &reg = h;
                 f.zf = (reg - 1) == 0;
                 f.n = true;
                 f.h = (reg & 0xf) == 0;
@@ -711,7 +714,7 @@ public:
             }
             case 0x17: {
                 clock += 4;
-                uint8_t &reg = a;
+                u8 &reg = a;
                 bool carryFlag = reg >> 7;
                 reg = (reg << 1) | f.cy;
                 f.zf = false;
@@ -726,7 +729,7 @@ public:
             case 0xE1:
             case 0xF1: {
                 clock += 12;
-                bc = ((uint16_t) (vram[sp + 1]) << 8) | vram[sp];
+                bc = ((u16) (vram[sp + 1]) << 8) | vram[sp];
                 sp += 2;
                 ++pc;
                 break;
@@ -739,13 +742,13 @@ public:
             }
             case 0xC9: {
                 clock += 16;
-                pc = ((uint16_t) vram[sp + 1] << 8) | vram[sp];
+                pc = ((u16) vram[sp + 1] << 8) | vram[sp];
                 sp += 2;
                 break;
             }
             case 0xBE: {
                 clock += 8;
-                uint8_t data = vram[hl];
+                u8 data = vram[hl];
                 bool result = a - data;
                 f.zf = result == 0;
                 f.n = true;
@@ -756,8 +759,8 @@ public:
             }
             case 0x86: {
                 clock += 8;
-                uint8_t data = vram[hl];
-                uint8_t result = a + data;
+                u8 data = vram[hl];
+                u8 result = a + data;
                 f.zf = result == 0;
                 f.n = false;
                 f.h = (0xf - (a & 0xf)) > (data & 0xf);
@@ -768,7 +771,7 @@ public:
 
             }
             case 0xEA: {
-                uint16_t addr = ((uint16_t) (vram[pc + 2]) << 8) | vram[pc + 1];
+                u16 addr = ((u16) (vram[pc + 2]) << 8) | vram[pc + 1];
                 vram[addr] = a;
                 pc += 3;
                 clock += 8;
@@ -788,8 +791,8 @@ public:
             case 0x04:
             case 0x14:
             case 0x24: {
-                uint8_t ix[3] = {3, 5, 7};
-                uint8_t &reg = registers[ix[opcode >> 4]];
+                u8 ix[3] = {3, 5, 7};
+                u8 &reg = registers[ix[opcode >> 4]];
                 f.zf = (reg + 1 == 0);
                 f.n = false;
                 f.h = ((reg & 0xf) == 0xf);
@@ -818,25 +821,25 @@ public:
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
 
     vector<sf::Uint8> &pixels;
-    vector<uint8_t> &vram; // reserve 8KB
+    vector<u8> &vram; // reserve 8KB
 
-    uint8_t &scx;
-    uint8_t &scy;
-    uint8_t &ly;
-    uint8_t &lyc;
-    uint8_t &wx;
-    uint8_t &wy;
-    uint8_t &dma;
-    uint8_t &bgp;
-    uint8_t &obp0;
-    uint8_t &obp1;
+    u8 &scx;
+    u8 &scy;
+    u8 &ly;
+    u8 &lyc;
+    u8 &wx;
+    u8 &wy;
+    u8 &dma;
+    u8 &bgp;
+    u8 &obp0;
+    u8 &obp1;
 
     LCDControl &lcdControl;
     LCDStatus &lcdStatus;
 
     uint64_t clock;
 
-    PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<uint8_t> &ram)
+    PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<u8> &ram)
             : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
               wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
               obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
@@ -870,12 +873,12 @@ public:
                 int pixelY = ((y + scy) % 256);
                 int pixelX = (x + scx) % 256;
                 int tile = (pixelY / 8 * 32 + pixelX / 8);
-                uint16_t color = getBackgroundTileMapDataRow(tile, pixelY % 8);
+                u16 color = getBackgroundTileMapDataRow(tile, pixelY % 8);
                 int xoffs = pixelX & 7;
-                uint8_t upper = ((color >> 8) >> (7 - xoffs)) & 1;
-                uint8_t lower = (color >> (7 - xoffs)) & 1;
+                u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
+                u8 lower = (color >> (7 - xoffs)) & 1;
                 int c = upper * 2 + lower;
-                const uint8_t *outputColor = colorisePixel(bgp, c);
+                const u8 *outputColor = colorisePixel(bgp, c);
                 drawColorToScreen(x, y, outputColor);
             }
 
@@ -884,7 +887,7 @@ public:
 
     }
 
-    void drawColorToScreen(int pixelX, int pixelY, const uint8_t *col) {
+    void drawColorToScreen(int pixelX, int pixelY, const u8 *col) {
 
         int deviceX = pixelX * DEVICE_RESOLUTION_X;
         int deviceY = pixelY * DEVICE_RESOLUTION_Y;
@@ -901,65 +904,65 @@ public:
 
     }
 
-    const uint8_t pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
-                                      {0xbb, 0xbb, 0xbb, 0xff},
-                                      {0x88, 0x88, 0x88, 0xff},
-                                      {0x00, 0x00, 0x00, 0xff}};
+    const u8 pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
+                                 {0xbb, 0xbb, 0xbb, 0xff},
+                                 {0x88, 0x88, 0x88, 0xff},
+                                 {0x00, 0x00, 0x00, 0xff}};
 
-    [[nodiscard]] const uint8_t *colorisePixel(uint8_t reg, uint8_t pixel) const {
+    [[nodiscard]] const u8 *colorisePixel(u8 reg, u8 pixel) const {
         // for some regs, 00 is transparent
-        uint8_t pixelCode = (reg >> (2 * pixel)) & 3;
+        u8 pixelCode = (reg >> (2 * pixel)) & 3;
         auto x = pixelColor[pixelCode];
         return x;
     }
 
-    constexpr static uint16_t OAM_ADDR_START = 0xFE00;
+    constexpr static u16 OAM_ADDR_START = 0xFE00;
 
     void dmaTransfer() {
         // make sure code is executin gin hram and copying data only from HRAM.
-        uint16_t startAddress = (uint16_t) dma << 8;
-        uint16_t endAddress = startAddress | 0xa0;
+        u16 startAddress = (u16) dma << 8;
+        u16 endAddress = startAddress | 0xa0;
         copy(vram.begin() + startAddress, vram.begin() + endAddress, vram.begin() + OAM_ADDR_START);
     }
 
     struct OAMFlags {
-        uint8_t unused: 4;
-        uint8_t palette: 1;
-        uint8_t xFlip: 1;
-        uint8_t yFlip: 1;
-        uint8_t objToBGPrio: 1;
+        u8 unused: 4;
+        u8 palette: 1;
+        u8 xFlip: 1;
+        u8 yFlip: 1;
+        u8 objToBGPrio: 1;
     };
     struct OAMEntry {
-        uint8_t yPos;
-        uint8_t xPos;
-        uint8_t tileNumber;
-        uint8_t flags;
+        u8 yPos;
+        u8 xPos;
+        u8 tileNumber;
+        u8 flags;
     };
 
     OAMEntry accessOAMEntry(int ix) {
         // verify its readable or writable here - check the lcd stat register.
-        uint8_t spriteDataStart = 0xFE00 + ix * 4;
+        u8 spriteDataStart = 0xFE00 + ix * 4;
 
-        uint8_t yPos = vram[spriteDataStart];
-        uint8_t xPos = vram[spriteDataStart + 1];
-        uint8_t tileNumber = vram[spriteDataStart + 2];
-        uint8_t flags = vram[spriteDataStart + 3];
+        u8 yPos = vram[spriteDataStart];
+        u8 xPos = vram[spriteDataStart + 1];
+        u8 tileNumber = vram[spriteDataStart + 2];
+        u8 flags = vram[spriteDataStart + 3];
         return OAMEntry{.yPos = yPos, .xPos = xPos, .tileNumber = tileNumber, .flags = flags};
     }
 
-    uint16_t getTileData(int tile, int row, uint16_t addrStart) {
+    u16 getTileData(int tile, int row, u16 addrStart) {
 
         int rowStride = 2;
-        uint16_t rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
-        uint16_t colorData = (((uint16_t) vram[rowStart]) << 8) | vram[rowStart + 1];
+        u16 rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
+        u16 colorData = (((u16) vram[rowStart]) << 8) | vram[rowStart + 1];
 
         return colorData;
     }
 
-    uint16_t getBackgroundTileMapDataRow(int ix, int row) {
+    u16 getBackgroundTileMapDataRow(int ix, int row) {
         assert(lcdControl.bgDisplayEnabled);
         if (lcdControl.bgWindowTileDataSelect) {
-            uint8_t tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
+            u8 tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
             return getTileData(tile, row, 0x8000);
         } else {
             auto tile = static_cast<int8_t>(lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
@@ -985,7 +988,7 @@ public:
         vram[0x100] = 0;
         vram[0x102] = 0;
 
-        array<uint8_t, 56> nintendoHeaderBmp = {
+        array<u8, 56> nintendoHeaderBmp = {
                 0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
                 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
                 0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
@@ -996,7 +999,7 @@ public:
             vram[0x104 + i] = nintendoHeaderBmp[i];
         }
 
-        array<uint8_t, 16> title = {'J', 'O', 'S', 'H', 'B', 'O', 'Y', 'A', 'D', 'V', 'E', 'N', 'T', 'U', 'R', 'E'};
+        array<u8, 16> title = {'J', 'O', 'S', 'H', 'B', 'O', 'Y', 'A', 'D', 'V', 'E', 'N', 'T', 'U', 'R', 'E'};
         for (int i = 0; i < title.size(); ++i) {
             vram[0x134 + i] = title[i];
         }
@@ -1055,23 +1058,25 @@ public:
     }
 
     void vblank() {
-        clock += 1140;
+        clock += 4560;
     }
 };
 
 class gb_emu {
 public:
 
-    vector<uint8_t> ram;
+    vector<u8> ram;
     PPU ppu;
     CPU cpu;
+    AudioDriver ad;
 
-    gb_emu(const string &bootRom, vector<uint8_t> &pixels) : ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram} {}
+    gb_emu(const string &bootRom, vector<u8> &pixels) :
+            ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram},
+            ad{ram} {}
 
     void run() {
 
         // need to set the status registers:
-        fill(ppu.pixels.begin(), ppu.pixels.end(), 0xff);
 
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
             ppu.ly = i;
@@ -1092,24 +1097,17 @@ public:
 
 
             ppu.oamSearch();
-            while (cpu.clock <= ppu.clock) {
-                cpu.fetchDecodeExecute();
-            }
+            runDevices();
 
             ppu.lcdStatus.modeFlag = 3;
             ppu.pixelTransfer(i);
-            while (cpu.clock <= ppu.clock) {
-                cpu.fetchDecodeExecute();
-            }
-
+            runDevices();
             ppu.lcdStatus.modeFlag = 0;
             if (ppu.lcdStatus.hblankInterrupt) {
                 ppu.hblankInterrupt();
             }
             ppu.hBlank();
-            while (cpu.clock <= ppu.clock) {
-                cpu.fetchDecodeExecute();
-            }
+            runDevices();
         }
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
@@ -1118,18 +1116,28 @@ public:
         ppu.vblank();
         for (int i = 0; i < 10; ++i) {
             ppu.ly = ppu.PIXEL_ROWS + i;
-            while (cpu.clock <= ppu.clock) {
-                cpu.fetchDecodeExecute();
-            }
+            runDevices();
         }
 
-        if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22)) {
+        if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
             cpu.clock = cpu.clock & ((1 << 22) - 1);
             ppu.clock = ppu.clock & ((1 << 22) - 1);
+            ad.clock = (ad.clock) & ((1 << 22) - 1);
         }
 
-        usleep(100000);
+        usleep(SLEEP_INTERVAL);
 
+    }
+
+    void runDevices() {
+        while (cpu.clock <= ppu.clock || ad.clock <= ppu.clock) {
+            if(cpu.clock <= ppu.clock) {
+                cpu.fetchDecodeExecute();
+            }
+            if(ad.clock <= ppu.clock) {
+                ad.run(cpu.clock);
+            }
+        }
     }
 };
 

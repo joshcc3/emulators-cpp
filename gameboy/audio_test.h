@@ -283,7 +283,7 @@ void generatePulseB(SampleBuffer &buffer, int duty, int len, int initialVol, int
 }
 
 
-void generatePulseA(SampleBuffer &buffer, int sweepTime, int sweepDir, int sweepShiftN, int duty, int len, int initialVol,
+void generatePulseA(SampleBuffer &buffer, int sweepTime,    int sweepDir, int sweepShiftN, int duty, int len, int initialVol,
                int volStep, int volSweep, int freq) {
     const int lenTemporary = 64;
 
@@ -306,13 +306,13 @@ void generatePulseA(SampleBuffer &buffer, int sweepTime, int sweepDir, int sweep
         int sweeps = timePassedNs / sweepTimeNs;
         double newFreq = initialFreq * pow((1 + sweepDir / pow(2, sweepShiftN)), sweeps);
         if ((int) newFreq != activeFreq) {
-            cout << newFreq << " " << (timePassedNs - a) / 1e6 << endl;
             a = timePassedNs;
         }
         activeFreq = min((double) 2047, max((double) 20, newFreq));
         int oneClock = 1e9 / activeFreq / 8;
 
         int volume = min(max(initialVol + timePassedNs / volStepCounterNs, 0LL), 100LL);
+        cout << volume << " " << (timePassedNs - a) / 1e6 << endl;
 
         buffer.generateGB(low * oneClock, 0);
         buffer.generateGB(high * oneClock, volume);
@@ -357,10 +357,13 @@ int main() {
     SampleBuffer buffer3;
     SampleBuffer buffer4;
 
-    generatePulseB(buffer1, 2, 0, 50, -1, 1, 1600);
-    generatePulseA(buffer2, 1, -1, 5, 2, 0, 100, -1, 1, 1900);
-    generatePulseB(buffer3, 2, 0, 50, -1, 1, 800);
-    generatePulseA(buffer4, 1, -1, 5, 2, 0, 100, -1, 1, 1000);
+//    generatePulseB(buffer1, 2, 0, 50, -1, 1, 1600);
+//    generatePulseA(buffer2, 1, -1, 5, 2, 0, 100, -1, 1, 1900);
+    generatePulseA(buffer2, 0, 0, 0, 2, 0, 15, -1, 3, 1985);
+    generatePulseA(buffer2, 0, 0, 0, 2, 0, 10, -1, 3, 1985);
+    generatePulseA(buffer2, 0, 0, 0, 2, 0, 5, -1, 3, 1985);
+//    generatePulseB(buffer3, 2, 0, 50, -1, 1, 800);
+//    generatePulseA(buffer4, 1, -1, 5, 2, 0, 100, -1, 1, 1000);
 
     array<uint8_t, 16> waveForm1{0x01, 0x24, 0x7f, 0x3c, 0xa2, 0x47, 0x67, 0x67, 0x76, 0x76, 0x74, 0x24, 0x67, 0xff,
                                  0x42, 0x10};
@@ -374,30 +377,30 @@ int main() {
 
     auto iter = back_inserter(resultBuffer);
 
-    iter = copy(buffer1.sampleBuf.begin(), buffer1.sampleBuf.end(), iter);
-    iter = copy(silence.begin(), silence.end(), iter);
+//    iter = copy(buffer1.sampleBuf.begin(), buffer1.sampleBuf.end(), iter);
+//    iter = copy(silence.begin(), silence.end(), iter);
     iter = copy(buffer2.sampleBuf.begin(), buffer2.sampleBuf.end(), iter);
-    iter = copy(silence.begin(), silence.end(), iter);
+//    iter = copy(silence.begin(), silence.end(), iter);
 
-    for (int i = 0; i < 6; ++i) {
-        for (int i = 0;
-             i < buffer1.sampleBuf.size() && i < buffer2.sampleBuf.size(); ++i) {
-            *iter = buffer1.sampleBuf[i] + buffer2.sampleBuf[i];
-            ++iter;
-        }
-    }
+//    for (int i = 0; i < 6; ++i) {
+//        for (int i = 0;
+//             i < buffer1.sampleBuf.size() && i < buffer2.sampleBuf.size(); ++i) {
+//            *iter = buffer1.sampleBuf[i] + buffer2.sampleBuf[i];
+//            ++iter;
+//        }
+//    }
 
-    iter = copy(buffer3.sampleBuf.begin(), buffer3.sampleBuf.end(), iter);
-    iter = copy(silence.begin(), silence.end(), iter);
-    iter = copy(buffer4.sampleBuf.begin(), buffer4.sampleBuf.end(), iter);
-    iter = copy(silence.begin(), silence.end(), iter);
-
-    for (int i = 0; i < 6; ++i) {
-        for (int i = 0; i < buffer3.sampleBuf.size() && i < buffer4.sampleBuf.size(); ++i) {
-            *iter = buffer3.sampleBuf[i] + buffer4.sampleBuf[i];
-            ++iter;
-        }
-    }
+//    iter = copy(buffer3.sampleBuf.begin(), buffer3.sampleBuf.end(), iter);
+//    iter = copy(silence.begin(), silence.end(), iter);
+//    iter = copy(buffer4.sampleBuf.begin(), buffer4.sampleBuf.end(), iter);
+//    iter = copy(silence.begin(), silence.end(), iter);
+//
+//    for (int i = 0; i < 6; ++i) {
+//        for (int i = 0; i < buffer3.sampleBuf.size() && i < buffer4.sampleBuf.size(); ++i) {
+//            *iter = buffer3.sampleBuf[i] + buffer4.sampleBuf[i];
+//            ++iter;
+//        }
+//    }
 
     auto samplesPtr = &resultBuffer[0];
     auto samplesSize = resultBuffer.size();

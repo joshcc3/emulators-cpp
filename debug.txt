@@ -22,9 +22,15 @@ https://alsa.opensrc.org/Proc_asound_documentation
 https://askubuntu.com/questions/426983/how-can-i-tell-if-im-using-alsa-or-pulse-audio-by-default-switching-to-i3-wm
 
 
+https://www.cprogramming.com/tutorial/shared-libraries-linux-gcc.html
+-L for library paths
+
+
 in order to find the pkgconfig for an installed package - it will help to say the following:
 $(pkg-config --cflags --libs libpipewire-0.3)
 sh-5.1$ mv main main.tmp; g++ -Wall main.cpp -o main -lm $(pkg-config --cflags --libs libpipewire-0.3) && ./main
+
+
 
 
 intel_hda - 
@@ -34,3 +40,18 @@ I added a alsoft.conf file to indicate that realtime priority is not critical.
 https://github.com/kcat/openal-soft/issues/596
 
 seems to be an issue with setting thread priority not allowed on linux? maybe it should be given that capability.
+
+
+
+frequency:
+243
+
+
+
+
+bg palette: 0xfc
+
+
+
+[jc@fedora emulators-cpp]$  g++ -I../SFML-2.6.0/include/ -L../SFML-2.6.0/lib/ -o test gameboy/video_test.cpp gameboy/video_test.h gameboy/audio_driver.cpp gameboy/audio_driver.h -lasound -lsfml-graphics -lsfml-system -lsfml-window && LD_LIBRARY_PATH=../SFML-2.6.0/lib/ ./test 
+

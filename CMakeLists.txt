@@ -20,3 +20,4 @@ add_executable(gba_emulator #main.cpp
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound)
 #target_link_libraries(gba_emulator /home/jc/CLionProjects/SFML/lib/libsfml-audio-ringBufferSize.a /home/jc/CLionProjects/SFML/lib/libsfml-system-ringBufferSize.a)
+

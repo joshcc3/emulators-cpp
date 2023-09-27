@@ -13,6 +13,8 @@
 #include <memory>
 #include <functional>
 
+//#define AUDIO_NOT_WORKING
+
 using u8 = uint8_t;
 using u16 = uint16_t;
 using i8 = int8_t;
@@ -26,16 +28,15 @@ public:
     static constexpr size_t SAMPLES_PER_SECOND = 16384;
     size_t ringBufferSize;
 
-    RingBuffer() : sampleBuf(SAMPLES_PER_SECOND, 0) {
+    RingBuffer() : sampleBuf(SAMPLES_PER_SECOND, 0), startIx{0}, endIx{0}, ringBufferSize{0} {
     }
 
     size_t size() {
         return ringBufferSize;
     }
 
-    u8 &operator[](int ix) {
-        auto x = sampleBuf.cbegin();
-        return sampleBuf[(ix + startIx) & sampleBuf.capacity()];
+    const u8 &operator[](int ix) const {
+        return sampleBuf[(ix + startIx) % sampleBuf.capacity()];
     }
 
 //    void generateWave(long long microseconds, long freqHz, long volume, int offset) {
@@ -55,15 +56,15 @@ public:
 
         assert(samples < sampleBuf.capacity() - size());
 
-        auto s1 = sampleBuf.begin() + startIx;
+        auto s1 = sampleBuf.begin() + endIx;
         auto s2 = sampleBuf.begin();
-        auto e1 = sampleBuf.begin() + std::min(sampleBuf.capacity(), startIx + size());
+        auto e1 = sampleBuf.begin() + std::min(sampleBuf.capacity(), endIx + samples);
         auto e2 = sampleBuf.begin() +
-                  std::max(0LL, (long long) startIx + (long long) size() - (long long) sampleBuf.capacity());
+                  std::max(0LL, (long long) endIx + (long long) samples - (long long) sampleBuf.capacity());
         fill(s1, e1, soundLevel);
         fill(s2, e2, soundLevel);
         ringBufferSize += samples;
-        endIx = (ringBufferSize + startIx) % sampleBuf.capacity();
+        endIx = (samples + endIx) % sampleBuf.capacity();
         sampleBuf.insert(sampleBuf.end(), samples, soundLevel);
     }
 
@@ -267,21 +268,24 @@ struct SoundOnOff {
 };
 
 
-class audio_driver {
+class AudioDriver {
 public:
-    const static char *DEVICE_NAME;            /* playback device */
 
     std::vector<u8> &vram;
 
+    constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 50;
     // send out 20ms of sound per iteration.
-    std::array<u8, RingBuffer::SAMPLES_PER_SECOND / 50> mixer;
+    std::array<u8, SAMPLES_PER_FLUSH> mixer;
+    constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
+                                                   double(RingBuffer::SAMPLES_PER_SECOND));
 
+    long long clock;
 
     PulseA &paReg;
     PulseB &pbReg;
     Wave &wvReg;
     Noise &noReg;
-    WaveData waveData[16];
+    WaveData *waveData; // 16 bytes
     ChannelControl &ccReg;
     SoundOutputSelection &soundOutputSelection;
     SoundOnOff &soundOnOff;
@@ -302,23 +306,29 @@ public:
 
     snd_pcm_t *handle;
 
-    audio_driver(std::vector<u8> &vram)
+    AudioDriver(std::vector<u8> &vram)
             : vram{vram}, ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
-              paReg{*reinterpret_cast<PulseA *>(vram[0xFF10])},
-              pbReg{*reinterpret_cast<PulseB *>(vram[0xFF16])},
-              wvReg{*reinterpret_cast<Wave *>(vram[0xFF1B])},
-              noReg{*reinterpret_cast<Noise *>(vram[0xFF20])},
-              waveData{*reinterpret_cast<WaveData *>(vram[0xFF30])},
-              ccReg{*reinterpret_cast<ChannelControl *>(vram[0xFF24])},
-              soundOutputSelection{*reinterpret_cast<SoundOutputSelection *>(vram[0xFF25])},
-              soundOnOff{*reinterpret_cast<SoundOnOff *>(vram[0xFF26])},
+              paReg{*reinterpret_cast<PulseA *>(&vram[0xFF10])},
+              pbReg{*reinterpret_cast<PulseB *>(&vram[0xFF16])},
+              wvReg{*reinterpret_cast<Wave *>(&vram[0xFF1B])},
+              noReg{*reinterpret_cast<Noise *>(&vram[0xFF20])},
+              ccReg{*reinterpret_cast<ChannelControl *>(&vram[0xFF24])},
+              soundOutputSelection{*reinterpret_cast<SoundOutputSelection *>(&vram[0xFF25])},
+              soundOnOff{*reinterpret_cast<SoundOnOff *>(&vram[0xFF26])},
               channel3SoundOnOff{vram[0xFF1A]},
-              cpPA{paReg}, cpPB{pbReg}, cpW{wvReg}, cpN{noReg},
-              cpCCReg{ccReg}, cpSoundOutputSelection{soundOutputSelection}, cpSoundOnOff{soundOnOff} {
+              cpPA{paReg},
+              cpPB{pbReg},
+              cpW{wvReg},
+              cpN{noReg},
+              cpCCReg{ccReg}, cpSoundOutputSelection{soundOutputSelection}, cpSoundOnOff{soundOnOff}, clock{0} {
+
+        waveData = reinterpret_cast<WaveData *>(&vram[0xFF30]);
 
         int err;
 
-        if ((err = snd_pcm_open(&handle, DEVICE_NAME, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+#ifndef AUDIO_NOT_WORKING
+
+        if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
             printf("Playback open error: %ringBufferSize\n", snd_strerror(err));
             exit(EXIT_FAILURE);
         }
@@ -333,9 +343,10 @@ public:
             printf("Playback open error: %ringBufferSize\n", snd_strerror(err));
             exit(EXIT_FAILURE);
         }
+#endif
     }
 
-    void run(long long cycles) {
+    void run(long long cpuClock) {
         u8 masterVolume2 = ccReg.so2Output;
         u8 masterVolume1 = ccReg.so1Output;
 
@@ -350,26 +361,39 @@ public:
             soundOnOff.clear();
         } else {
             if (paReg.counter && cpPA != paReg || paReg.restart) {
-                generatePulseA(paReg, 60);
-            } else if (paReg.counter + pbReg.restart == 0) {
-                ch1.drain(ch1.size());
+                paReg.restart = 0;
+                generatePulseA(paReg, 0);
+                flush();
             }
+//            else if (paReg.counter + paReg.restart == 0) {
+//                ch1.drain(ch1.size());
+//            }
+
             if (pbReg.counter && cpPB != pbReg || pbReg.restart > 0) {
-                generatePulseB(pbReg, 60);
-            } else if (pbReg.counter + pbReg.restart == 0) {
-                ch2.drain(ch2.size());
+                pbReg.restart = 0;
+                generatePulseB(pbReg, 0);
+                flush();
             }
+//            else if (pbReg.counter + pbReg.restart == 0) {
+//                ch2.drain(ch2.size());
+//            }
             if (wvReg.counter && wvReg != cpW || wvReg.restart) {
-                generateWave(wvReg, 250);
-            } else if ((channel3SoundOnOff >> 7) == 0) {
-                ch3.drain(ch3.size());
+                wvReg.restart = 0;
+                generateWave(wvReg, 0);
             }
+//            else if ((channel3SoundOnOff >> 7) == 0) {
+//                ch3.drain(ch3.size());
+//            }
             if (cpN != noReg) {
 
             }
         }
 
-        flush();
+        if (clock % CLOCKS_PER_FLUSH > cpuClock % CLOCKS_PER_FLUSH) {
+            flush();
+        }
+
+        clock = cpuClock;
 
         cpPA = paReg;
         cpPB = pbReg;
@@ -380,10 +404,16 @@ public:
         cpSoundOnOff = soundOnOff;
     }
 
-    void flush() {
+    long long flush() {
         for (int i = 0; i < mixer.size(); ++i) {
             // volume scaling info
             mixer[i] = ch1[i] + ch2[i] + ch3[i] + ch4[i];
+            if (mixer[i] != 0) {
+                std::cout << (int) mixer[i] << " ";
+            }
+        }
+        if (mixer[0] != 0) {
+            std::cout << std::endl;
         }
         ch1.drain(mixer.size());
         ch2.drain(mixer.size());
@@ -397,6 +427,7 @@ public:
         int bufferSize = mixer.size();
         u8 *samplesPtr = &mixer[0];
 
+#ifndef AUDIO_NOT_WORKING
         snd_pcm_sframes_t frames;
         frames = snd_pcm_writei(handle, samplesPtr, bufferSize);
         if (frames < 0)
@@ -407,24 +438,27 @@ public:
         if (frames > 0 && frames < (long) bufferSize) {
             printf("Short write (expected %li, wrote %li)\n", (long) bufferSize, frames);
         }
+#endif
+        return bufferSize;
 
     }
 
 
-    ~audio_driver() {
+    ~AudioDriver() {
+#ifndef AUDIO_NOT_WORKING
         /* pass the remaining samples, otherwise they're dropped in close */
         int err = snd_pcm_drain(handle);
         if (err < 0)
             printf("snd_pcm_drain failed: %ringBufferSize\n", snd_strerror(err));
         snd_pcm_close(handle);
-
+#endif
     }
 
     void generatePulseB(PulseB &b, int pulseLen) {
         int duty = b.dutyPattern;
         int len = b.counter ? b.len : pulseLen;
         int initialVol = b.initialVol;
-        int volStep = b.envelopeDir;
+        int volStep = b.envelopeDir ? 1 : -1;
         int volSweep = b.volEnvelopeNum;
         int freq = b.getFreq();
         int freqHz = 131072 / (2048 - freq);
@@ -438,6 +472,7 @@ public:
         u8 high = waveForm[duty][1];
         int volStepCounter = volStep * volSweep / 64.0 * 1e9;
         int soundLength = (64 - len) / 256.0 * 1e9 / (8 * oneClock);
+        std::cout << "TimeB " << soundLength << std::endl;
         for (int i = 0; i < soundLength; ++i) {
             int volume = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounter, 0), 100);
             ch2.generateGB(low * oneClock, 0);
@@ -448,12 +483,12 @@ public:
 
     void generatePulseA(PulseA &pa, int pulseLen) {
         int sweepTime = pa.sweepTime;
-        int sweepDir = pa.sweepDir;
+        int sweepDir = pa.sweepDir ? 1 : -1;
         int sweepShiftN = pa.sweepNum;
         int duty = pa.dutyPattern;
         int len = pa.counter ? pa.len : pulseLen;
         int initialVol = pa.initialVol;
-        int volStep = pa.envelopeDir;
+        int volStep = pa.envelopeDir ? 1 : -1;
         int volSweep = pa.volEnvelopeNum;
         int freq = pa.getFreq();
 
@@ -470,6 +505,7 @@ public:
         const u8 high = waveForm[duty][1];
         const long long volStepCounterNs = volStep * volSweep / 64.0 * 1e9;
         const int soundLengthNs = (64 - len) / 256.0 * 1e9;
+        std::cout << "TimeA " << soundLengthNs << std::endl;
         int activeFreq = initialFreq;
         long long timePassedNs = 0;
         long long a = 0;
@@ -484,7 +520,7 @@ public:
 
             int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 100LL);
 
-            ch1.generateGB(low * oneClock, 0);
+            ch1.generateGB(low * oneClock, 1);
             ch1.generateGB(high * oneClock, volume);
             timePassedNs += (8 * oneClock);
         }
@@ -518,9 +554,6 @@ public:
 
     }
 };
-
-
-const char *audio_driver::DEVICE_NAME = "default";
 
 
 #endif //GBA_EMULATOR_AUDIO_DRIVER_H
