@@ -395,7 +395,11 @@ public:
             case 0x1A: {
                 clock += 8;
                 a = vram[de];
-                ++pc;
+                ++pc;//
+// Created by jc on 24/09/23.
+//
+
+
                 break;
             }
             case 0xCD: {
@@ -866,11 +870,11 @@ public:
                 int pixelY = ((y + scy) % 256);
                 int pixelX = (x + scx) % 256;
                 int tile = (pixelY / 8 * 32 + pixelX / 8);
-                uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
+                uint16_t color = getBackgroundTileMapDataRow(tile, pixelY % 8);
                 int xoffs = pixelX & 7;
                 uint8_t upper = ((color >> 8) >> (7 - xoffs)) & 1;
                 uint8_t lower = (color >> (7 - xoffs)) & 1;
-                int c = upper*2 + lower;
+                int c = upper * 2 + lower;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
                 drawColorToScreen(x, y, outputColor);
             }
@@ -1124,7 +1128,7 @@ public:
             ppu.clock = ppu.clock & ((1 << 22) - 1);
         }
 
-        usleep(10000);
+        usleep(100000);
 
     }
 };
