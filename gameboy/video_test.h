@@ -851,7 +851,6 @@ public:
 
         // at ly flush to display and generate interrupt?
         // lyc is a counter that gets incremented. when ly == lyc then an interrupt is generated
-
         if (!lcdControl.lcdEnabled) {
 //            draw all 0s to screen;
         } else if (lcdControl.windowDispEnabled) {
@@ -1068,6 +1067,8 @@ public:
     void run() {
 
         // need to set the status registers:
+        fill(ppu.pixels.begin(), ppu.pixels.end(), 0xff);
+
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
             ppu.ly = i;
             ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
@@ -1123,6 +1124,7 @@ public:
             ppu.clock = ppu.clock & ((1 << 22) - 1);
         }
 
+        usleep(10000);
 
     }
 };

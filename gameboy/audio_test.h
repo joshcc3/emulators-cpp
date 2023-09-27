@@ -283,8 +283,7 @@ void generatePulseB(SampleBuffer &buffer, int duty, int len, int initialVol, int
 }
 
 
-void
-generatePulseA(SampleBuffer &buffer, int sweepTime, int sweepDir, int sweepShiftN, int duty, int len, int initialVol,
+void generatePulseA(SampleBuffer &buffer, int sweepTime, int sweepDir, int sweepShiftN, int duty, int len, int initialVol,
                int volStep, int volSweep, int freq) {
     const int lenTemporary = 64;
 

@@ -361,7 +361,7 @@
 //            timerTable[3] = 4;
 //        }
 //
-//        // what's the div register for
+//        // what'ringBufferSize the div register for
 //        // how do you generate
 //        void run(uint32_t clockNumber1Mhz) {
 //            uint32_t freq = timerTable[TAC % 0x3];
