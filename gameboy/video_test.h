@@ -807,8 +807,8 @@ public:
     constexpr static int PIXEL_COLUMNS = 160;
     constexpr static int PIXEL_ROWS = 144;
 
-    constexpr static int DEVICE_RESOLUTION_X = 2;
-    constexpr static int DEVICE_RESOLUTION_Y = 2;
+    constexpr static int DEVICE_RESOLUTION_X = 5;
+    constexpr static int DEVICE_RESOLUTION_Y = 5;
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
@@ -868,7 +868,10 @@ public:
                 int pixelX = (x + scx) % 256;
                 int tile = (pixelY / 8 * 32 + pixelX / 8);
                 uint16_t color = getBackgroundTileMapDataRow(tile, y % 8);
-                int c = (color >> (2 * (7 - pixelX % 8))) & 3;
+                int xoffs = pixelX & 7;
+                uint8_t upper = ((color >> 8) >> (7 - xoffs)) & 1;
+                uint8_t lower = (color >> (7 - xoffs)) & 1;
+                int c = upper*2 + lower;
                 const uint8_t *outputColor = colorisePixel(bgp, c);
                 drawColorToScreen(x, y, outputColor);
             }
@@ -945,7 +948,7 @@ public:
 
         int rowStride = 2;
         uint16_t rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
-        uint16_t colorData = (((uint16_t) vram[rowStart + 1]) << 8) | vram[rowStart];
+        uint16_t colorData = (((uint16_t) vram[rowStart]) << 8) | vram[rowStart + 1];
 
         return colorData;
     }
