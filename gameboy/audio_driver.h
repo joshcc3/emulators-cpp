@@ -5,7 +5,7 @@
 #ifndef GBA_EMULATOR_AUDIO_DRIVER_H
 #define GBA_EMULATOR_AUDIO_DRIVER_H
 
-
+#include <chrono>
 #include <alsa/asoundlib.h>
 #include <vector>
 #include <valarray>
@@ -68,18 +68,20 @@ public:
         sampleBuf.insert(sampleBuf.end(), samples, soundLevel);
     }
 
-    void drain(unsigned long i) {
-        for (int j = 0; j < std::min(i, size()); ++j) {
-            sampleBuf[(j + startIx) % sampleBuf.capacity()] = 0;
-        }
-        if (i >= size()) {
-            ringBufferSize = 0;
-            startIx = 0;
-            endIx = 0;
+    u8 pop() {
+        if (startIx < endIx) {
+            int sIx = startIx;
+            startIx = (startIx + 1) % sampleBuf.capacity();
+            --ringBufferSize;
+            return sampleBuf[sIx];
         } else {
-            ringBufferSize -= i;
-            startIx = (startIx + i) % sampleBuf.capacity();
+            return 0;
         }
+    }
+
+    void snapToNow() {
+        endIx = startIx;
+        ringBufferSize = 0;
     }
 };
 
@@ -273,13 +275,13 @@ public:
 
     std::vector<u8> &vram;
 
-    constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 50;
+    constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 200;
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
     constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
                                                    double(RingBuffer::SAMPLES_PER_SECOND));
 
-    long long clock;
+    uint64_t clock;
 
     PulseA &paReg;
     PulseB &pbReg;
@@ -346,7 +348,7 @@ public:
 #endif
     }
 
-    void run(long long cpuClock) {
+    void run(uint64_t cpuClock) {
         u8 masterVolume2 = ccReg.so2Output;
         u8 masterVolume1 = ccReg.so1Output;
 
@@ -361,23 +363,24 @@ public:
             soundOnOff.clear();
         } else {
             if (paReg.counter && cpPA != paReg || paReg.restart) {
+                ch1.snapToNow();
                 paReg.restart = 0;
                 generatePulseA(paReg, 0);
-                flush();
             }
 //            else if (paReg.counter + paReg.restart == 0) {
 //                ch1.drain(ch1.size());
 //            }
 
             if (pbReg.counter && cpPB != pbReg || pbReg.restart > 0) {
+                ch2.snapToNow();
                 pbReg.restart = 0;
                 generatePulseB(pbReg, 0);
-                flush();
             }
 //            else if (pbReg.counter + pbReg.restart == 0) {
 //                ch2.drain(ch2.size());
 //            }
             if (wvReg.counter && wvReg != cpW || wvReg.restart) {
+                ch3.snapToNow();
                 wvReg.restart = 0;
                 generateWave(wvReg, 0);
             }
@@ -385,11 +388,16 @@ public:
 //                ch3.drain(ch3.size());
 //            }
             if (cpN != noReg) {
+                ch4.snapToNow();
 
             }
         }
 
+        static auto clocked  = std::chrono::high_resolution_clock::now();
         if (clock % CLOCKS_PER_FLUSH > cpuClock % CLOCKS_PER_FLUSH) {
+            auto now = std::chrono::high_resolution_clock::now();
+            std::cout << "Time since flush: " << (now - clocked).count()/1e6 << std::endl;
+            clocked = now;
             flush();
         }
 
@@ -405,20 +413,16 @@ public:
     }
 
     long long flush() {
+        static int flushCounter = clock;
+//        std::cout << "Clocks since ad flush: " << clock - flushCounter << std::endl;
+        flushCounter = clock;
+        if (ch1.size() + ch2.size() + ch3.size() + ch4.size() == 0) {
+            return 0;
+        }
         for (int i = 0; i < mixer.size(); ++i) {
             // volume scaling info
-            mixer[i] = ch1[i] + ch2[i] + ch3[i] + ch4[i];
-            if (mixer[i] != 0) {
-                std::cout << (int) mixer[i] << " ";
-            }
+            mixer[i] = 10 * (ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
         }
-        if (mixer[0] != 0) {
-            std::cout << std::endl;
-        }
-        ch1.drain(mixer.size());
-        ch2.drain(mixer.size());
-        ch3.drain(mixer.size());
-        ch4.drain(mixer.size());
         soundOnOff.sound1 = ch1.size() == 0;
         soundOnOff.sound2 = ch2.size() == 0;
         soundOnOff.sound3 = ch3.size() == 0;

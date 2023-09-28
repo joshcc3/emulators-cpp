@@ -6,7 +6,10 @@
 #define GBA_EMULATOR_VIDEO_TEST_H
 
 #define DEBUG
+//#define VERBOSE
 
+
+#include <chrono>
 #include <iostream>
 #include <cstdint>
 #include <bitset>
@@ -24,7 +27,6 @@
 #include <unistd.h>
 #include "audio_driver.h"
 
-#define SLEEP_INTERVAL 1000000/59
 
 using namespace std;
 
@@ -814,8 +816,8 @@ public:
     constexpr static int PIXEL_COLUMNS = 160;
     constexpr static int PIXEL_ROWS = 144;
 
-    constexpr static int DEVICE_RESOLUTION_X = 5;
-    constexpr static int DEVICE_RESOLUTION_Y = 5;
+    constexpr static int DEVICE_RESOLUTION_X = 3;
+    constexpr static int DEVICE_RESOLUTION_Y = 3;
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
@@ -1057,8 +1059,8 @@ public:
         clock += 204;
     }
 
-    void vblank() {
-        clock += 4560;
+    void vblankRow() {
+        clock += 456;
     }
 };
 
@@ -1077,24 +1079,27 @@ public:
     void run() {
 
         // need to set the status registers:
-
+#ifdef VERBOSE
+        auto p1 = chrono::high_resolution_clock::now();
+        uint64_t startingClock[3] = {ppu.clock, cpu.clock, ad.clock};
+#endif
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
+            uint64_t startClock = ppu.clock;
             ppu.ly = i;
             ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
 
             if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
                 ppu.coincidenceInterruptt();
             }
+
             // all following clockx %x %x cycles in 4MHz
             // should take 1/60th of a second at 1Mhz
-
             // must update lcdc status, and trigger interrupts
 
             ppu.lcdStatus.modeFlag = 2;
             if (ppu.lcdStatus.oamInterrupt) {
                 ppu.oamInterrupt();
             }
-
 
             ppu.oamSearch();
             runDevices();
@@ -1108,13 +1113,15 @@ public:
             }
             ppu.hBlank();
             runDevices();
+
+            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20));
         }
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
             ppu.vBlankInterrupt();
         }
-        ppu.vblank();
         for (int i = 0; i < 10; ++i) {
+            ppu.vblankRow();
             ppu.ly = ppu.PIXEL_ROWS + i;
             runDevices();
         }
@@ -1125,7 +1132,23 @@ public:
             ad.clock = (ad.clock) & ((1 << 22) - 1);
         }
 
-        usleep(SLEEP_INTERVAL);
+
+#ifdef DEBUG
+        static int counter = 0;
+        if(counter == 2) {
+            PulseA a = {0, 0, 2, 0, 49, 2, 3, 0, 0xf, 0x83, 7, 0};
+
+            ad.generatePulseA(a, 0);
+        }
+        ++counter;
+#endif
+
+#ifdef VERBOSE
+        auto p2 = chrono::high_resolution_clock::now();
+        auto pd = p2 - p1;
+        cout << "Time taken: " << pd.count() / 1000000.0 << endl;
+        cout << "CIncs [ppu, cpu, ad]: " << ppu.clock - startingClock[0] << ", " << cpu.clock - startingClock[1] << ", " << ad.clock - startingClock[2] << endl;
+#endif
 
     }
 
