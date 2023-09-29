@@ -1074,7 +1074,9 @@ public:
 
     gb_emu(const string &bootRom, vector<u8> &pixels) :
             ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram},
-            ad{ram} {}
+            ad{ram} {
+
+    }
 
     void run() {
 
@@ -1114,8 +1116,11 @@ public:
             ppu.hBlank();
             runDevices();
 
-            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20));
+            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
         }
+#ifdef VERBOSE
+        cout << "Screen render" << endl;
+#endif
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
             ppu.vBlankInterrupt();
@@ -1132,32 +1137,22 @@ public:
             ad.clock = (ad.clock) & ((1 << 22) - 1);
         }
 
-
-#ifdef DEBUG
-        static int counter = 0;
-        if(counter == 2) {
-            PulseA a = {0, 0, 2, 0, 49, 2, 3, 0, 0xf, 0x83, 7, 0};
-
-            ad.generatePulseA(a, 0);
-        }
-        ++counter;
-#endif
-
 #ifdef VERBOSE
         auto p2 = chrono::high_resolution_clock::now();
         auto pd = p2 - p1;
-        cout << "Time taken: " << pd.count() / 1000000.0 << endl;
-        cout << "CIncs [ppu, cpu, ad]: " << ppu.clock - startingClock[0] << ", " << cpu.clock - startingClock[1] << ", " << ad.clock - startingClock[2] << endl;
+        cout << "Screen Render Time taken: " << pd.count() / 1000000.0 << endl;
+        cout << "CIncs [ppu, cpu, ad]: " << ppu.clock - startingClock[0] << ", " << cpu.clock - startingClock[1] << ", "
+             << ad.clock - startingClock[2] << endl;
 #endif
 
     }
 
     void runDevices() {
         while (cpu.clock <= ppu.clock || ad.clock <= ppu.clock) {
-            if(cpu.clock <= ppu.clock) {
+            if (cpu.clock <= ppu.clock) {
                 cpu.fetchDecodeExecute();
             }
-            if(ad.clock <= ppu.clock) {
+            if (ad.clock <= ppu.clock) {
                 ad.run(cpu.clock);
             }
         }

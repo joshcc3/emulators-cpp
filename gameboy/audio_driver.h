@@ -14,6 +14,7 @@
 #include <functional>
 
 //#define AUDIO_NOT_WORKING
+//#define DEBUG
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -275,7 +276,7 @@ public:
 
     std::vector<u8> &vram;
 
-    constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 200;
+    constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 100;
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
     constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
@@ -331,7 +332,7 @@ public:
 #ifndef AUDIO_NOT_WORKING
 
         if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-            printf("Playback open error: %ringBufferSize\n", snd_strerror(err));
+            printf("Playback open error: %s \n", snd_strerror(err));
             exit(EXIT_FAILURE);
         }
 
@@ -341,11 +342,13 @@ public:
                                       1,
                                       RingBuffer::SAMPLES_PER_SECOND,
                                       1,
-                                      500000)) < 0) {   /* 0.5sec */
-            printf("Playback open error: %ringBufferSize\n", snd_strerror(err));
+                                      20000)) < 0) {   /* 0.5sec */
+            printf("Playback open error: %s\n", snd_strerror(err));
             exit(EXIT_FAILURE);
         }
 #endif
+
+
     }
 
     void run(uint64_t cpuClock) {
@@ -393,12 +396,16 @@ public:
             }
         }
 
-        static auto clocked  = std::chrono::high_resolution_clock::now();
-        if (clock % CLOCKS_PER_FLUSH > cpuClock % CLOCKS_PER_FLUSH) {
+        static auto clocked = std::chrono::high_resolution_clock::now();
+        if (clock % CLOCKS_PER_FLUSH >= cpuClock % CLOCKS_PER_FLUSH) {
             auto now = std::chrono::high_resolution_clock::now();
-            std::cout << "Time since flush: " << (now - clocked).count()/1e6 << std::endl;
+            auto elapsed = (now - clocked);
             clocked = now;
-            flush();
+            auto samples = flush();
+            if(samples) {
+                std::cout << "Time since flush: " << elapsed.count() / 1e6 << " " << samples << " - samples"
+                          << std::endl;
+            }
         }
 
         clock = cpuClock;
@@ -413,13 +420,20 @@ public:
     }
 
     long long flush() {
+#ifdef VERBOSE
         static int flushCounter = clock;
 //        std::cout << "Clocks since ad flush: " << clock - flushCounter << std::endl;
         flushCounter = clock;
-        if (ch1.size() + ch2.size() + ch3.size() + ch4.size() == 0) {
+#endif
+        size_t ch1S = ch1.size();
+        size_t ch2S = ch2.size();
+        size_t ch3S = ch3.size();
+        size_t ch4S = ch4.size();
+        if (ch1S + ch2S + ch3S + ch4S == 0) {
             return 0;
         }
-        for (int i = 0; i < mixer.size(); ++i) {
+        int samples = std::min((int)mixer.size(), (int)std::max(ch1S, std::max(ch2S, std::max(ch3S, ch4S))));
+        for (int i = 0; i < samples; ++i) {
             // volume scaling info
             mixer[i] = 10 * (ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
         }
@@ -428,7 +442,7 @@ public:
         soundOnOff.sound3 = ch3.size() == 0;
         soundOnOff.sound4 = ch4.size() == 0;
 
-        int bufferSize = mixer.size();
+        int bufferSize = samples;
         u8 *samplesPtr = &mixer[0];
 
 #ifndef AUDIO_NOT_WORKING
@@ -437,11 +451,12 @@ public:
         if (frames < 0)
             frames = snd_pcm_recover(handle, frames, 0);
         if (frames < 0) {
-            printf("snd_pcm_writei failed: %ringBufferSize\n", snd_strerror(frames));
+            printf("snd_pcm_writei failed: %s\n", snd_strerror(frames));
         }
         if (frames > 0 && frames < (long) bufferSize) {
             printf("Short write (expected %li, wrote %li)\n", (long) bufferSize, frames);
         }
+        /* pass the remaining samples, otherwise they're dropped in close */
 #endif
         return bufferSize;
 
@@ -453,7 +468,7 @@ public:
         /* pass the remaining samples, otherwise they're dropped in close */
         int err = snd_pcm_drain(handle);
         if (err < 0)
-            printf("snd_pcm_drain failed: %ringBufferSize\n", snd_strerror(err));
+            printf("snd_pcm_drain failed: %s\n", snd_strerror(err));
         snd_pcm_close(handle);
 #endif
     }
@@ -486,6 +501,7 @@ public:
 
 
     void generatePulseA(PulseA &pa, int pulseLen) {
+
         int sweepTime = pa.sweepTime;
         int sweepDir = pa.sweepDir ? 1 : -1;
         int sweepShiftN = pa.sweepNum;
@@ -496,7 +512,6 @@ public:
         int volSweep = pa.volEnvelopeNum;
         int freq = pa.getFreq();
 
-
         const int initialFreq = 131072 / (2048 - freq);
 
         const int sweepTimeNs = sweepTime == 0 ? 2e9 : (double) (7.8 * 1e6 * sweepTime);
@@ -505,20 +520,17 @@ public:
                                    {2, 6},
                                    {4, 4},
                                    {6, 2}};
+
         const u8 low = waveForm[duty][0];
         const u8 high = waveForm[duty][1];
         const long long volStepCounterNs = volStep * volSweep / 64.0 * 1e9;
-        const int soundLengthNs = (64 - len) / 256.0 * 1e9;
+        const long long soundLengthNs = (64 - len) / 256.0 * 1e9;
         std::cout << "TimeA " << soundLengthNs << std::endl;
         int activeFreq = initialFreq;
         long long timePassedNs = 0;
-        long long a = 0;
         while (timePassedNs <= soundLengthNs) {
             int sweeps = timePassedNs / sweepTimeNs;
             double newFreq = initialFreq * pow((1 + sweepDir / pow(2, sweepShiftN)), sweeps);
-            if ((int) newFreq != activeFreq) {
-                a = timePassedNs;
-            }
             activeFreq = std::min((double) 2047, std::max((double) 20, newFreq));
             int oneClock = 1e9 / activeFreq / 8;
 

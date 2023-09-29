@@ -355,16 +355,35 @@ int main() {
     snd_pcm_t *handle;
     snd_pcm_sframes_t frames;
 
+
+#ifndef ANW
+    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        printf("Playback open error: %s\n", snd_strerror(err));
+        exit(EXIT_FAILURE);
+    }
+
+    if ((err = snd_pcm_set_params(handle,
+                                  SND_PCM_FORMAT_U8,
+                                  SND_PCM_ACCESS_RW_INTERLEAVED,
+                                  1,
+                                  SampleBuffer::SAMPLES_PER_SECOND,
+                                  1,
+                                  280000)) < 0) {   /* 0.5sec */
+        printf("Playback open error: %s\n", snd_strerror(err));
+        exit(EXIT_FAILURE);
+    }
+#endif
+
+
     SampleBuffer buffer1;
     SampleBuffer buffer2;
     SampleBuffer buffer3;
     SampleBuffer buffer4;
-
 //    generatePulseB(buffer1, 2, 0, 50, -1, 1, 1600);
     generatePulseA(buffer2, 1, -1, 5, 2, 0, 100, -1, 1, 1900);
 //    generatePulseA(buffer2, 0, 0, 0, 2, 49, 15, -1, 0, 1985);
-    generatePulseA(buffer2, 0, 0, 0, 2, 49, 100, -1, 0, 1923);
-    generatePulseA(buffer2, 0, 0, 0, 2, 0, 100, -5, 1, 1985);
+//    generatePulseA(buffer2, 0, 0, 0, 2, 49, 100, -1, 0, 1923);
+//    generatePulseA(buffer2, 0, 0, 0, 2, 0, 100, -5, 1, 1985);
 //    generatePulseB(buffer3, 2, 0, 50, -1, 1, 800);
 //    generatePulseA(buffer4, 1, -1, 5, 2, 0, 100, -1, 1, 1000);
 
@@ -416,22 +435,6 @@ int main() {
 //        buffer[i] = random() & 0xff;
 
 #ifndef ANW
-    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-        printf("Playback open error: %s\n", snd_strerror(err));
-        exit(EXIT_FAILURE);
-    }
-
-    if ((err = snd_pcm_set_params(handle,
-                                  SND_PCM_FORMAT_U8,
-                                  SND_PCM_ACCESS_RW_INTERLEAVED,
-                                  1,
-                                  buffer1.SAMPLES_PER_SECOND,
-                                  1,
-                                  500000)) < 0) {   /* 0.5sec */
-        printf("Playback open error: %s\n", snd_strerror(err));
-        exit(EXIT_FAILURE);
-    }
-
     for (int i = 0; i < samplesSize / 80; ++i) {
 //        frames = snd_pcm_writei(handle, samplesPtr, samplesSize);
         frames = snd_pcm_writei(handle, samplesPtr + i * 80, 80);
@@ -445,6 +448,8 @@ int main() {
             printf("Short write (expected %li, wrote %li)\n", (long) samplesSize, frames);
         }
     }
+
+    usleep(3000000);
 
     /* pass the remaining samples, otherwise they're dropped in close */
     err = snd_pcm_drain(handle);
