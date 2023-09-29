@@ -46,6 +46,26 @@ https://ez80.readthedocs.io/en/latest/docs/bit-shifts/rla.html
 
 https://raw.githubusercontent.com/lmmendes/game-boy-opcodes/master/opcodes.json
 
+http://www.csounds.com/manual/html/RealTimeLinux.html
+
+https://www.alsa-project.org/wiki/File:Alsa_bps_formula.png
+https://www.linuxjournal.com/article/6735
+
+
+Bugs
+----
+when serializing the devices need to make sure that the granularity of clock increments is fine enough.
+Updated entire vblank and then fast forwarded cpu, but it relies on a wait of 480 clocks to 
+fast forward past the end of a display line which is 456 clocks.
+
+Some docs refer to 1Mhz whereas others 4Mhz (all clocks are div by 4 as a memory load takes 4 clocks *shrug*)
+
+ALSA has a setting latency which needs to be set appropriately for real time audio.
+You want the audio to be responsive which means the clock and flush rate have to actually match in timing.
+If the clock is too fast then you enqueue too much sound so that when a new sound needs to be played
+it takes a while. If the flush rate is too slow then the sound gets broken up and there are clear artifacts
+and beeps.
+
 Questions
 ---
 whats an io register

@@ -854,36 +854,64 @@ public:
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
     }
 
+    enum class PixelSource {
+        BACKGROUND,
+        WINDOW,
+        SPRITE
+    };
 
     void pixelTransfer(int y) {
         // screen dimensions: 166 x 143 (166 wide and 143 long)
 
         // at ly flush to display and generate interrupt?
         // lyc is a counter that gets incremented. when ly == lyc then an interrupt is generated
-        if (!lcdControl.lcdEnabled) {
+        if (lcdControl.lcdEnabled) {
 //            draw all 0s to screen;
-        } else if (lcdControl.windowDispEnabled) {
-
-            throw "Not supporting window disp enabled yet";
-            // wy;
-            // wx;
-            // wx = 7, wy = 0 is upper left
-
-        } else if (lcdControl.bgDisplayEnabled) {
-
+// todo sprite map as well.
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
-                int pixelY = ((y + scy) % 256);
-                int pixelX = (x + scx) % 256;
-                int tile = (pixelY / 8 * 32 + pixelX / 8);
-                u16 color = getBackgroundTileMapDataRow(tile, pixelY % 8);
-                int xoffs = pixelX & 7;
-                u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
-                u8 lower = (color >> (7 - xoffs)) & 1;
-                int c = upper * 2 + lower;
-                const u8 *outputColor = colorisePixel(bgp, c);
-                drawColorToScreen(x, y, outputColor);
-            }
+                const u8 *topColor = nullptr;
 
+                if (lcdControl.bgDisplayEnabled) {
+
+                    int pixelY = ((y + scy) % 256);
+                    int pixelX = (x + scx) % 256;
+                    int tile = (pixelY / 8 * 32 + pixelX / 8);
+                    u16 color = getBackgroundTileMapDataRow(tile, pixelY % 8);
+                    int xoffs = pixelX & 7;
+                    u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
+                    u8 lower = (color >> (7 - xoffs)) & 1;
+                    int c = upper * 2 + lower;
+                    const u8 *outputColor = colorisePixel(bgp, c);
+                    topColor = outputColor;
+                }
+                if (lcdControl.windowDispEnabled) {
+
+                    // wy;
+                    // wx;
+                    // wx = 7, wy = 0 is upper left
+
+                    if (x >= wx && y >= wy) {
+
+                        int pixelY = ((y - wy) % 256);
+                        int pixelX = (x - wx + 7) % 256;
+                        int tile = (pixelY / 8 * 32 + pixelX / 8);
+                        u16 color = getWindowTileMapDataRow(tile, pixelY % 8);
+                        int xoffs = pixelX & 7;
+                        u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
+                        u8 lower = (color >> (7 - xoffs)) & 1;
+                        int c = upper * 2 + lower;
+                        const u8 *outputColor = colorisePixel(bgp, c);
+                        topColor = outputColor;
+                    }
+                }
+
+//                if (objectPresent) {
+
+//                }
+
+                drawColorToScreen(x, y, topColor);
+
+            }
         }
         clock += 172;
 
@@ -968,6 +996,17 @@ public:
             return getTileData(tile, row, 0x8000);
         } else {
             auto tile = static_cast<int8_t>(lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
+            return getTileData(tile, row, 0x9000);
+        }
+    }
+
+    u16 getWindowTileMapDataRow(int ix, int row) {
+        assert(lcdControl.windowDispEnabled);
+        if (lcdControl.bgWindowTileDataSelect) {
+            u8 tile = lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
+            return getTileData(tile, row, 0x8000);
+        } else {
+            auto tile = static_cast<int8_t>(lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
             return getTileData(tile, row, 0x9000);
         }
     }
@@ -1155,6 +1194,11 @@ public:
             if (ad.clock <= ppu.clock) {
                 ad.run(cpu.clock);
             }
+            if(ppu.dma != 0) {
+                ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
+                ppu.dma = 0;
+            }
+
         }
     }
 };

@@ -368,7 +368,22 @@ public:
             if (paReg.counter && cpPA != paReg || paReg.restart) {
                 ch1.snapToNow();
                 paReg.restart = 0;
-                generatePulseA(paReg, 0);
+                int initialVol = paReg.initialVol;
+                int initialFreq = paReg.getFreq();
+                int finalVol = paReg.getFreq();
+                int finalFreq = 0;
+                generatePulseA(paReg, 0, finalVol, finalFreq);
+
+//                for(int i = 0; i < 4 && paReg.counter == 0 && finalVol > 0; ++i) {
+//                    generatePulseA(paReg, 0, finalVol, finalFreq);
+//                    paReg.initialVol = finalVol;
+//                    paReg.freqLo = finalFreq & 0xFF;
+//                    paReg.freqHi = (paReg.freqHi & 0xf0) | ((finalFreq >> 8) & 0x7);
+//                }
+
+                paReg.initialVol = initialVol;
+                paReg.freqLo = initialFreq & 0xFF;
+                paReg.freqHi = (paReg.freqHi & 0xf0) | ((initialFreq >> 8) & 0x7);
             }
 //            else if (paReg.counter + paReg.restart == 0) {
 //                ch1.drain(ch1.size());
@@ -377,7 +392,16 @@ public:
             if (pbReg.counter && cpPB != pbReg || pbReg.restart > 0) {
                 ch2.snapToNow();
                 pbReg.restart = 0;
-                generatePulseB(pbReg, 0);
+
+                int initialVol = pbReg.initialVol;
+                int finalVol = pbReg.getFreq();
+                generatePulseB(pbReg, 0, finalVol);
+//                for(int i = 0; i < 3 && pbReg.counter == 0 && finalVol > 0; ++i) {
+//                    generatePulseB(pbReg, 0, finalVol);
+//                    pbReg.initialVol = finalVol;
+//                }
+
+                pbReg.initialVol = initialVol;
             }
 //            else if (pbReg.counter + pbReg.restart == 0) {
 //                ch2.drain(ch2.size());
@@ -473,7 +497,7 @@ public:
 #endif
     }
 
-    void generatePulseB(PulseB &b, int pulseLen) {
+    void generatePulseB(PulseB &b, int pulseLen, int& finalVol) {
         int duty = b.dutyPattern;
         int len = b.counter ? b.len : pulseLen;
         int initialVol = b.initialVol;
@@ -493,14 +517,14 @@ public:
         int soundLength = (64 - len) / 256.0 * 1e9 / (8 * oneClock);
         std::cout << "TimeB " << soundLength << std::endl;
         for (int i = 0; i < soundLength; ++i) {
-            int volume = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounter, 0), 100);
+            finalVol = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounter, 0), 100);
             ch2.generateGB(low * oneClock, 0);
-            ch2.generateGB(high * oneClock, volume);
+            ch2.generateGB(high * oneClock, finalVol);
         }
     }
 
 
-    void generatePulseA(PulseA &pa, int pulseLen) {
+    void generatePulseA(PulseA &pa, int pulseLen, int& finalVol, int& finalFreq) {
 
         int sweepTime = pa.sweepTime;
         int sweepDir = pa.sweepDir ? 1 : -1;
@@ -526,18 +550,18 @@ public:
         const long long volStepCounterNs = volStep * volSweep / 64.0 * 1e9;
         const long long soundLengthNs = (64 - len) / 256.0 * 1e9;
         std::cout << "TimeA " << soundLengthNs << std::endl;
-        int activeFreq = initialFreq;
+        finalFreq = initialFreq;
         long long timePassedNs = 0;
         while (timePassedNs <= soundLengthNs) {
             int sweeps = timePassedNs / sweepTimeNs;
             double newFreq = initialFreq * pow((1 + sweepDir / pow(2, sweepShiftN)), sweeps);
-            activeFreq = std::min((double) 2047, std::max((double) 20, newFreq));
-            int oneClock = 1e9 / activeFreq / 8;
+            finalFreq = std::min((double) 2047, std::max((double) 20, newFreq));
+            int oneClock = 1e9 / finalFreq / 8;
 
-            int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 100LL);
+            finalVol = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 100LL);
 
             ch1.generateGB(low * oneClock, 1);
-            ch1.generateGB(high * oneClock, volume);
+            ch1.generateGB(high * oneClock, finalVol);
             timePassedNs += (8 * oneClock);
         }
     }
