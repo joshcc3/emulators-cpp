@@ -323,9 +323,9 @@ public:
               cpPB{pbReg},
               cpW{wvReg},
               cpN{noReg},
+              waveData{reinterpret_cast<WaveData *>(&vram[0xFF30])},
               cpCCReg{ccReg}, cpSoundOutputSelection{soundOutputSelection}, cpSoundOnOff{soundOnOff}, clock{0} {
 
-        waveData = reinterpret_cast<WaveData *>(&vram[0xFF30]);
 
         int err;
 

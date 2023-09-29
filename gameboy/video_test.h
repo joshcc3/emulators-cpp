@@ -1,13 +1,13 @@
 //
 // Created by jc on 24/09/23.
 //
-
 #ifndef GBA_EMULATOR_VIDEO_TEST_H
 #define GBA_EMULATOR_VIDEO_TEST_H
 
 #define DEBUG
 //#define VERBOSE
 
+#include <algorithm>
 
 #include <chrono>
 #include <iostream>
@@ -811,6 +811,37 @@ public:
 
 };
 
+struct OAMFlags {
+    u8 unused: 4;
+    u8 palette: 1;
+    u8 xFlip: 1;
+    u8 yFlip: 1;
+    u8 objToBGPrio: 1;
+};
+struct OAMEntry {
+    u8 yPos;
+    u8 xPos;
+    u8 tileNumber;
+    OAMFlags flags;
+};
+
+struct PixelColor {
+    uint32_t priority;
+    u16 shade;
+    const u8 *color;
+
+    PixelColor(u8 p, u16 s, const u8 *c) : priority{p}, shade{s}, color{c} {
+
+    }
+};
+
+struct PixelComparator {
+    bool operator()(const PixelColor &p1, const PixelColor &p2) {
+        return p1.priority > p2.priority;
+    }
+};
+
+
 class PPU {
 public:
     constexpr static int PIXEL_COLUMNS = 160;
@@ -839,6 +870,8 @@ public:
     LCDControl &lcdControl;
     LCDStatus &lcdStatus;
 
+    OAMEntry *oamEntries;
+
     uint64_t clock;
 
     PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<u8> &ram)
@@ -846,7 +879,10 @@ public:
               wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
               obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
               lcdStatus{*reinterpret_cast<LCDStatus *>(&vram[0xFF41])},
-              vram(ram), clock{0} {
+              vram(ram),
+              oamEntries{reinterpret_cast<OAMEntry *>(&vram[OAM_ADDR_START])},
+              clock{0} {
+
 #ifdef DEBUG
         debugInitializeCartridgeHeader();
 #endif
@@ -861,29 +897,43 @@ public:
     };
 
     void pixelTransfer(int y) {
+
         // screen dimensions: 166 x 143 (166 wide and 143 long)
 
         // at ly flush to display and generate interrupt?
         // lyc is a counter that gets incremented. when ly == lyc then an interrupt is generated
+
         if (lcdControl.lcdEnabled) {
-//            draw all 0s to screen;
-// todo sprite map as well.
+
+            //            draw all 0s to screen;
+            // todo sprite map as well.
+
+            vector<uint8_t> visibleSprites{20, 0};
+
+            for (int i = 0; i < 40; ++i) {
+                OAMEntry &e = oamEntries[i];
+                if (e.xPos != 0 && e.xPos < 168 && e.yPos <= y + 8 && e.yPos >= y + 8) {
+                    visibleSprites.push_back(i);
+                }
+            }
+            visibleSprites.resize(10);
+            vector<PixelColor> v;
+            v.reserve(12);
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
-                const u8 *topColor = nullptr;
+                v.clear();
 
                 if (lcdControl.bgDisplayEnabled) {
 
                     int pixelY = ((y + scy) % 256);
                     int pixelX = (x + scx) % 256;
                     int tile = (pixelY / 8 * 32 + pixelX / 8);
+
                     u16 color = getBackgroundTileMapDataRow(tile, pixelY % 8);
-                    int xoffs = pixelX & 7;
-                    u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
-                    u8 lower = (color >> (7 - xoffs)) & 1;
-                    int c = upper * 2 + lower;
-                    const u8 *outputColor = colorisePixel(bgp, c);
-                    topColor = outputColor;
+                    u8 colorShade;
+                    const u8 *col = getPixelColor(pixelX, color, bgp, colorShade);
+                    v.emplace_back(3 * colorShade, colorShade, col);
                 }
+
                 if (lcdControl.windowDispEnabled) {
 
                     // wy;
@@ -892,29 +942,57 @@ public:
 
                     if (x >= wx && y >= wy) {
 
-                        int pixelY = ((y - wy) % 256);
-                        int pixelX = (x - wx + 7) % 256;
+                        int pixelY = y - wy;
+                        int pixelX = x - wx + 7;
                         int tile = (pixelY / 8 * 32 + pixelX / 8);
+
                         u16 color = getWindowTileMapDataRow(tile, pixelY % 8);
-                        int xoffs = pixelX & 7;
-                        u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
-                        u8 lower = (color >> (7 - xoffs)) & 1;
-                        int c = upper * 2 + lower;
-                        const u8 *outputColor = colorisePixel(bgp, c);
-                        topColor = outputColor;
+                        u8 colorShade;
+                        auto col = getPixelColor(pixelX, color, bgp, colorShade);
+                        v.emplace_back(2 * colorShade + 10, colorShade, col);
                     }
                 }
 
-//                if (objectPresent) {
 
-//                }
+                for (auto s: visibleSprites) {
+                    OAMEntry &e2 = oamEntries[s];
+                    if (e2.xPos <= x + 8 && x + 8 <= e2.xPos) {
+                        u16 color = getTileData(e2.tileNumber,  y - e2.yPos, 0x8000);
+                        u8 colorShade;
+                        auto col = getPixelColor(x - e2.xPos, color, bgp, colorShade);
+                        uint32_t priority;
+                        if (colorShade == 0) {
+                            priority = 0;
+                        } else if (e2.flags.objToBGPrio == 1) {
+                            priority = 11;
+                        } else {
+                            priority = (((255 - x) << 8) | (255 - e2.tileNumber));
+                        }
+                        v.emplace_back(priority, colorShade, col);
+                    }
+                }
 
-                drawColorToScreen(x, y, topColor);
+                if(v.size() > 0) {
+                    auto visible = *min_element(v.begin(), v.end(), PixelComparator());
+                    drawColorToScreen(x, y, visible.color);
+                }
+
 
             }
         }
         clock += 172;
 
+    }
+
+    const u8 *getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade) const {
+        const u8 *topColor;
+        int xoffs = pixelX & 7;
+        u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
+        u8 lower = (color >> (7 - xoffs)) & 1;
+        colorShade = upper * 2 + lower;
+        const u8 *outputColor = colorisePixel(reg, colorShade);
+        topColor = outputColor;
+        return topColor;
     }
 
     void drawColorToScreen(int pixelX, int pixelY, const u8 *col) {
@@ -955,30 +1033,6 @@ public:
         copy(vram.begin() + startAddress, vram.begin() + endAddress, vram.begin() + OAM_ADDR_START);
     }
 
-    struct OAMFlags {
-        u8 unused: 4;
-        u8 palette: 1;
-        u8 xFlip: 1;
-        u8 yFlip: 1;
-        u8 objToBGPrio: 1;
-    };
-    struct OAMEntry {
-        u8 yPos;
-        u8 xPos;
-        u8 tileNumber;
-        u8 flags;
-    };
-
-    OAMEntry accessOAMEntry(int ix) {
-        // verify its readable or writable here - check the lcd stat register.
-        u8 spriteDataStart = 0xFE00 + ix * 4;
-
-        u8 yPos = vram[spriteDataStart];
-        u8 xPos = vram[spriteDataStart + 1];
-        u8 tileNumber = vram[spriteDataStart + 2];
-        u8 flags = vram[spriteDataStart + 3];
-        return OAMEntry{.yPos = yPos, .xPos = xPos, .tileNumber = tileNumber, .flags = flags};
-    }
 
     u16 getTileData(int tile, int row, u16 addrStart) {
 
@@ -1006,7 +1060,8 @@ public:
             u8 tile = lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
             return getTileData(tile, row, 0x8000);
         } else {
-            auto tile = static_cast<int8_t>(lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
+            auto tile = static_cast<int8_t>(lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 +
+                                                                                                             ix]);
             return getTileData(tile, row, 0x9000);
         }
     }
@@ -1194,7 +1249,7 @@ public:
             if (ad.clock <= ppu.clock) {
                 ad.run(cpu.clock);
             }
-            if(ppu.dma != 0) {
+            if (ppu.dma != 0) {
                 ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
                 ppu.dma = 0;
             }
