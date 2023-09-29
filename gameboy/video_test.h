@@ -30,6 +30,25 @@
 
 using namespace std;
 
+struct InterruptFlag {
+    bool vBlank: 1;
+    bool lcdStat: 1;
+    bool timer: 1;
+    bool serial: 1;
+    bool joypad: 1;
+    u8 _unused: 3;
+};
+
+struct InterruptEnable {
+    bool vBlank: 1;
+    bool lcdStat: 1;
+    bool timer: 1;
+    bool serial: 1;
+    bool joypad: 1;
+    u8 _unused: 3;
+};
+
+
 struct LCDControl {
     bool bgDisplayEnabled: 1;
     bool objSpriteDisplayEnable: 1;
@@ -60,6 +79,64 @@ struct FlagReg {
     bool zf: 1;
 };
 
+
+constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
+constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
+
+class Joypad {
+public:
+    using Scancode = sf::Keyboard::Scancode;
+
+    struct JoypadBit {
+        u8 column: 4;
+        u8 row: 4;
+    };
+    vector<u8> &ram;
+    u8 &jReg;
+    InterruptFlag &ifReg;
+
+    std::set<Scancode> interestKeys;
+    std::map<Scancode, JoypadBit> keyMap;
+
+    Joypad(vector<u8> &ram) : ram{ram}, jReg{ram[0xFF00]},
+                              ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+        std::vector<Scancode> events = {Scancode::A, Scancode::B, Scancode::P, Scancode::L, Scancode::Left,
+                                        Scancode::Right,
+                                        Scancode::Up, Scancode::Down};
+        for (auto e: events) {
+            interestKeys.insert(e);
+        }
+
+        keyMap = std::map<Scancode, JoypadBit>{};
+        keyMap[Scancode::A] = {.column = 5, .row = 0};
+        keyMap[Scancode::B] = {.column = 5, .row = 1};
+        keyMap[Scancode::L] = {.column = 5, .row = 2}; // select
+        keyMap[Scancode::P] = {.column = 5, .row = 3}; // start
+        keyMap[Scancode::Left] = {.column = 4, .row = 1};
+        keyMap[Scancode::Right] = {.column = 4, .row = 0};
+        keyMap[Scancode::Up] = {.column = 4, .row = 2};
+        keyMap[Scancode::Down] = {.column = 4, .row = 3};
+
+    }
+
+    void processKeyEvents(const std::vector<sf::Event> &events) {
+        for (auto event: events) {
+            if ((event.type & (KEYPRESS | KEYRELEASED)) &&
+                interestKeys.find(event.key.scancode) != interestKeys.end()) {
+                auto key = keyMap[event.key.scancode];
+                if (event.type & sf::Event::KeyPressed) {
+                    jReg = jReg | (1 << key.column) | (1 << key.row);
+                } else {
+                    jReg = jReg & ~(1 << key.column | 1 << key.row);
+                }
+                ifReg.joypad = true;
+            }
+        }
+
+    }
+
+};
+
 class CPU {
 public:
     u8 registers[8];
@@ -83,9 +160,27 @@ public:
 
     vector<u8> &vram;
 
-    CPU(vector<u8> &vram) : vram{vram} {
+    bool ime;
+
+    InterruptFlag &ifReg;
+    InterruptEnable &ieReg;
+
+    CPU(vector<u8> &vram) : vram{vram}, clock{0}, ime{false},
+                            ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
+                            ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
         initializeRegisters();
         clock = 0;
+
+        vram[0xFF40] = 0x91;
+        vram[0xFF42] = 0x00;
+        vram[0xFF43] = 0x00;
+        vram[0xFF45] = 0x00;
+        vram[0xFF47] = 0xFC;
+        vram[0xFF48] = 0xFF;
+        vram[0xFF49] = 0xFF;
+        vram[0xFF4A] = 0x00;
+        vram[0xFF4B] = 0x00;
+        vram[0xFFFF] = 0x00;
     }
 
     void initializeRegisters() {
@@ -95,7 +190,36 @@ public:
         hl = 0x014D;
         sp = 0xFFFE;
         pc = 0x0000;
+    }
 
+    void processInterrupts() {
+        if (ime) {
+            ime = false;
+            // if reset
+            u16 jumpAddr = 0x0;
+            if (ifReg.vBlank && ieReg.vBlank) {
+                ifReg.vBlank = false;
+                jumpAddr = 0x40;
+            } else if (ifReg.lcdStat && ieReg.lcdStat) {
+                ifReg.lcdStat = false;
+                jumpAddr = 0x48;
+            } else if (ifReg.timer && ieReg.timer) {
+                ifReg.timer = false;
+                jumpAddr = 0x50;
+            } else if (ifReg.serial && ieReg.serial) {
+                ifReg.serial = false;
+                jumpAddr = 0x58;
+            } else if (ifReg.joypad && ieReg.joypad) {
+                ifReg.joypad = false;
+                jumpAddr = 0x60;
+            }
+
+            if (jumpAddr) {
+                vram[--sp] = pc >> 8;
+                vram[--sp] = pc & 0xff;
+                pc = jumpAddr;
+            }
+        }
     }
 
     void fetchDecodeExecute() {
@@ -803,10 +927,22 @@ public:
                 clock += 4;
                 break;
             }
+            case 0x09: {
+                u16 updatedPC = ((u16) vram[sp + 1] << 8) | vram[sp];
+                auto func = [this]() { sp += 2; };
+                cpuFunc(16, updatedPC, f, func);
+            }
             default: {
                 throw "Not implemented";
             }
         }
+    }
+
+    void cpuFunc(u8 clockInc, u16 pcUpdate, FlagReg &flags, function<void()> func) {
+        func();
+        clock += clockInc;
+        pc = pcUpdate;
+        f = flags;
     }
 
 };
@@ -883,18 +1019,10 @@ public:
               oamEntries{reinterpret_cast<OAMEntry *>(&vram[OAM_ADDR_START])},
               clock{0} {
 
-#ifdef DEBUG
         debugInitializeCartridgeHeader();
-#endif
         std::ifstream input(bootROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
     }
-
-    enum class PixelSource {
-        BACKGROUND,
-        WINDOW,
-        SPRITE
-    };
 
     void pixelTransfer(int y) {
 
@@ -931,7 +1059,7 @@ public:
                     u16 color = getBackgroundTileMapDataRow(tile, pixelY % 8);
                     u8 colorShade;
                     const u8 *col = getPixelColor(pixelX, color, bgp, colorShade);
-                    v.emplace_back(3 * colorShade, colorShade, col);
+                    v.emplace_back(3 * colorShade + 1, colorShade, col);
                 }
 
                 if (lcdControl.windowDispEnabled) {
@@ -949,34 +1077,36 @@ public:
                         u16 color = getWindowTileMapDataRow(tile, pixelY % 8);
                         u8 colorShade;
                         auto col = getPixelColor(pixelX, color, bgp, colorShade);
-                        v.emplace_back(2 * colorShade + 10, colorShade, col);
+                        v.emplace_back(10 * colorShade + 2, colorShade, col);
                     }
                 }
 
 
                 for (auto s: visibleSprites) {
-                    OAMEntry &e2 = oamEntries[s];
-                    if (e2.xPos <= x + 8 && x + 8 <= e2.xPos) {
-                        u16 color = getTileData(e2.tileNumber,  y - e2.yPos, 0x8000);
+                    OAMEntry &e = oamEntries[s];
+                    if (e.xPos <= x + 8 && x + 8 <= e.xPos) {
+                        u8 row = !e.flags.yFlip ? y - e.yPos : 8 - (y - e.yPos);
+                        u16 color = getTileData(e.tileNumber, row, 0x8000);
                         u8 colorShade;
-                        auto col = getPixelColor(x - e2.xPos, color, bgp, colorShade);
+                        u8 &palette = e.flags.palette == 0 ? obp0 : obp1;
+                        u8 column = !e.flags.xFlip ? x - e.xPos : 8 - (x - e.xPos);
+                        auto col = getPixelColor(column, color, palette, colorShade);
                         uint32_t priority;
                         if (colorShade == 0) {
                             priority = 0;
-                        } else if (e2.flags.objToBGPrio == 1) {
-                            priority = 11;
+                        } else if (e.flags.objToBGPrio == 1) {
+                            priority = 3;
                         } else {
-                            priority = (((255 - x) << 8) | (255 - e2.tileNumber));
+                            priority = (((255 - x) << 8) | (255 - e.tileNumber));
                         }
                         v.emplace_back(priority, colorShade, col);
                     }
                 }
 
-                if(v.size() > 0) {
+                if (v.size() > 0) {
                     auto visible = *min_element(v.begin(), v.end(), PixelComparator());
                     drawColorToScreen(x, y, visible.color);
                 }
-
 
             }
         }
@@ -1081,6 +1211,8 @@ public:
     }
 
     void debugInitializeCartridgeHeader() {
+
+#ifdef DEBUG
         vram[0x100] = 0;
         vram[0x102] = 0;
 
@@ -1103,7 +1235,11 @@ public:
         vram[0x0147] = 0x0;
         vram[0x0148] = 0;
         vram[0x149] = 0;
+#endif
 
+        assert(vram[0x0146] == 0);
+        std::cout << "Cartridge memory type: " << vram[0x147] << std::endl;
+        assert(vram[0x149] == 0);
 
     }
 
@@ -1158,6 +1294,49 @@ public:
     }
 };
 
+
+class Timer {
+public:
+
+    u8 clock;
+    vector<u8> &ram;
+    u8 &div;
+    u8 &tima;
+    u8 &tma;
+    u8 &tac;
+    InterruptFlag &ifReg;
+
+    Timer(vector<u8> &ram) : ram{ram},
+                             div{ram[0xFF04]}, tima{ram[0xFF05]}, tma{ram[0xFF06]}, tac{ram[0xFF07]},
+                             clock{0},
+                             ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+        tima = 0x00;
+        tma = 0x00;
+        tac = 0x00;
+
+    }
+
+    void run() {
+
+        if (div != (clock >> 8)) {
+            div = 0;
+        } else {
+            div = (clock + 4) >> 8;
+        }
+
+        clock += 4;
+        int updateFreq = 1 << (12 + 2 * (3 - ((tac & 0x3) - 1) % 4));
+        bool isInc = (clock & (updateFreq - 1)) == 0;
+
+        if (tima == 0xFF && isInc) {
+            tima = tma;
+            ifReg.timer = true;
+        }
+
+    }
+
+};
+
 class gb_emu {
 public:
 
@@ -1165,14 +1344,18 @@ public:
     PPU ppu;
     CPU cpu;
     AudioDriver ad;
+    Timer timer;
+    Joypad jp;
+    InterruptFlag &ifReg;
 
     gb_emu(const string &bootRom, vector<u8> &pixels) :
             ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram},
-            ad{ram} {
+            ad{ram}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])},
+            jp{ram} {
 
     }
 
-    void run() {
+    void run(vector<sf::Event>& es) {
 
         // need to set the status registers:
 #ifdef VERBOSE
@@ -1185,7 +1368,8 @@ public:
             ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
 
             if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
-                ppu.coincidenceInterruptt();
+                ifReg.lcdStat = true;
+                runDevices();
             }
 
             // all following clockx %x %x cycles in 4MHz
@@ -1198,7 +1382,7 @@ public:
             }
 
             ppu.oamSearch();
-            runDevices();
+            runDevices(es);
 
             ppu.lcdStatus.modeFlag = 3;
             ppu.pixelTransfer(i);
@@ -1208,7 +1392,7 @@ public:
                 ppu.hblankInterrupt();
             }
             ppu.hBlank();
-            runDevices();
+            runDevices(es);
 
             usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
         }
@@ -1217,12 +1401,14 @@ public:
 #endif
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
-            ppu.vBlankInterrupt();
+            ifReg.vBlank = true;
+            runDevices(es);
         }
+
         for (int i = 0; i < 10; ++i) {
             ppu.vblankRow();
             ppu.ly = ppu.PIXEL_ROWS + i;
-            runDevices();
+            runDevices(es);
         }
 
         if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
@@ -1241,9 +1427,13 @@ public:
 
     }
 
-    void runDevices() {
+    void runDevices(vector<sf::Event> &es) {
         while (cpu.clock <= ppu.clock || ad.clock <= ppu.clock) {
+            if (timer.clock <= ppu.clock) {
+                timer.run();
+            }
             if (cpu.clock <= ppu.clock) {
+                cpu.processInterrupts();
                 cpu.fetchDecodeExecute();
             }
             if (ad.clock <= ppu.clock) {
@@ -1253,7 +1443,9 @@ public:
                 ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
                 ppu.dma = 0;
             }
-
+            if (!es.empty()) {
+                jp.processKeyEvents(es);
+            }
         }
     }
 };

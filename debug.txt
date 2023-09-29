@@ -55,3 +55,22 @@ bg palette: 0xfc
 
 [jc@fedora emulators-cpp]$  g++ -I../SFML-2.6.0/include/ -L../SFML-2.6.0/lib/ -o test gameboy/video_test.cpp gameboy/video_test.h gameboy/audio_driver.cpp gameboy/audio_driver.h -lasound -lsfml-graphics -lsfml-system -lsfml-window && LD_LIBRARY_PATH=../SFML-2.6.0/lib/ ./test 
 
+writei failed unknown error
+screen scross too fast?
+ -- need to pause after each instruction - finer grainer sleeps?
+buffer underrun, soudn is not prompt?
+
+why is it skipping the first sound.
+why is it outputting much less sound.
+
+
+Channels using memory effects
+floating point
+dns
+
+
+http://www.csounds.com/manual/html/RealTimeLinux.html
+
+
+simulate the actual ppu - with lock free programming.
+

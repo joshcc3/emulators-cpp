@@ -280,7 +280,7 @@ public:
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
     constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
-                                                   double(RingBuffer::SAMPLES_PER_SECOND)/1.8);
+                                                   double(RingBuffer::SAMPLES_PER_SECOND) / 1.8);
 
     uint64_t clock;
 
@@ -325,6 +325,17 @@ public:
               cpN{noReg},
               waveData{reinterpret_cast<WaveData *>(&vram[0xFF30])},
               cpCCReg{ccReg}, cpSoundOutputSelection{soundOutputSelection}, cpSoundOnOff{soundOnOff}, clock{0} {
+
+        std::array<u8, sizeof(PulseA)> pa = {0x80, 0xBF, 0xF3, 0x00, 0xBF};
+        paReg = *reinterpret_cast<PulseA *>(&pa[0]);
+        std::array<u8, sizeof(PulseB)> pb = {0x3F, 0x00, 0x00, 0xBF};
+        pbReg = *reinterpret_cast<PulseB *>(&pb[0]);
+        std::array<u8, sizeof(Wave)> wv = {0xFF, 0x9F, 0x00, 0xBF};
+        wvReg = *reinterpret_cast<Wave *>(&pb[0]);
+        u8 b = 0x77;
+        ccReg = *reinterpret_cast<ChannelControl *>(&b);
+        b = 0xF3;
+        soundOutputSelection = *reinterpret_cast<SoundOutputSelection *>(&b);
 
 
         int err;
@@ -426,7 +437,7 @@ public:
             auto elapsed = (now - clocked);
             clocked = now;
             auto samples = flush();
-            if(samples) {
+            if (samples) {
                 std::cout << "Time since flush: " << elapsed.count() / 1e6 << " " << samples << " - samples"
                           << std::endl;
             }
@@ -456,10 +467,10 @@ public:
         if (ch1S + ch2S + ch3S + ch4S == 0) {
             return 0;
         }
-        int samples = std::min((int)mixer.size(), (int)std::max(ch1S, std::max(ch2S, std::max(ch3S, ch4S))));
+        int samples = std::min((int) mixer.size(), (int) std::max(ch1S, std::max(ch2S, std::max(ch3S, ch4S))));
         for (int i = 0; i < samples; ++i) {
             // volume scaling info
-            mixer[i] =  7*(ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
+            mixer[i] = 7 * (ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
         }
         soundOnOff.sound1 = ch1.size() == 0;
         soundOnOff.sound2 = ch2.size() == 0;
@@ -497,7 +508,7 @@ public:
 #endif
     }
 
-    void generatePulseB(PulseB &b, int pulseLen, int& finalVol) {
+    void generatePulseB(PulseB &b, int pulseLen, int &finalVol) {
         int duty = b.dutyPattern;
         int len = b.counter ? b.len : pulseLen;
         int initialVol = b.initialVol;
@@ -524,7 +535,7 @@ public:
     }
 
 
-    void generatePulseA(PulseA &pa, int pulseLen, int& finalVol, int& finalFreq) {
+    void generatePulseA(PulseA &pa, int pulseLen, int &finalVol, int &finalFreq) {
 
         int sweepTime = pa.sweepTime;
         int sweepDir = pa.sweepDir ? 1 : -1;
