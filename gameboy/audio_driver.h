@@ -280,7 +280,7 @@ public:
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
     constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
-                                                   double(RingBuffer::SAMPLES_PER_SECOND));
+                                                   double(RingBuffer::SAMPLES_PER_SECOND)/1.8);
 
     uint64_t clock;
 
@@ -435,7 +435,7 @@ public:
         int samples = std::min((int)mixer.size(), (int)std::max(ch1S, std::max(ch2S, std::max(ch3S, ch4S))));
         for (int i = 0; i < samples; ++i) {
             // volume scaling info
-            mixer[i] = 10 * (ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
+            mixer[i] =  7*(ch1.pop() + ch2.pop() + ch3.pop() + ch4.pop());
         }
         soundOnOff.sound1 = ch1.size() == 0;
         soundOnOff.sound2 = ch2.size() == 0;

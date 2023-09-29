@@ -368,7 +368,7 @@ int main() {
                                   1,
                                   SampleBuffer::SAMPLES_PER_SECOND,
                                   1,
-                                  280000)) < 0) {   /* 0.5sec */
+                                  10000)) < 0) {   /* 0.5sec */
         printf("Playback open error: %s\n", snd_strerror(err));
         exit(EXIT_FAILURE);
     }
@@ -448,6 +448,9 @@ int main() {
             printf("Short write (expected %li, wrote %li)\n", (long) samplesSize, frames);
         }
     }
+
+    generatePulseA(buffer2, 1, -1, 5, 2, 0, 100, -1, 1, 1900);
+
 
     usleep(3000000);
 
