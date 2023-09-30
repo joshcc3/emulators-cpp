@@ -4,7 +4,7 @@
 #ifndef GBA_EMULATOR_VIDEO_TEST_H
 #define GBA_EMULATOR_VIDEO_TEST_H
 
-#define DEBUG
+//#define DEBUG
 //#define VERBOSE
 
 #include <algorithm>
@@ -298,7 +298,8 @@ public:
                         break;
                     }
                     default:
-                        throw "Not implemented";
+                        cerr  << "Opcode not implemented: [" << opcode << "]." << endl;
+                        exit(1);
                 }
                 break;
             case 0xA0:
@@ -931,9 +932,53 @@ public:
                 u16 updatedPC = ((u16) vram[sp + 1] << 8) | vram[sp];
                 auto func = [this]() { sp += 2; };
                 cpuFunc(16, updatedPC, f, func);
+                break;
             }
+            case 0xc3: {
+                u16 updatedPC = ((u16)vram[pc + 2] << 8) | vram[pc + 1];
+                clock += 16;
+                pc = updatedPC;
+                break;
+            }
+            case 0xF3: {
+                ime = false;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0x36: {
+                vram[hl] = vram[pc + 1];
+                pc += 2;
+                clock += 12;
+                break;
+            }
+            case 0x2a: {
+                a = vram[hl++];
+                ++pc;
+                clock += 8;
+                break;
+            }
+            case 0x0B: {
+                --bc;
+                ++pc;
+                clock += 8;
+                break;
+            }
+
+            case 0xB1: {
+                a = a | c;
+                f.zf = a == 0;
+                f.n = 0;
+                f.h = 0;
+                f.cy = 0;
+                ++pc;
+                clock += 4;
+                break;
+            }
+
             default: {
-                throw "Not implemented";
+                printf("Opcode not implemented: [%x]",  opcode);
+                exit(1);
             }
         }
     }
@@ -1235,11 +1280,11 @@ public:
         vram[0x0147] = 0x0;
         vram[0x0148] = 0;
         vram[0x149] = 0;
-#endif
 
         assert(vram[0x0146] == 0);
         std::cout << "Cartridge memory type: " << vram[0x147] << std::endl;
         assert(vram[0x149] == 0);
+#endif
 
     }
 
@@ -1369,7 +1414,7 @@ public:
 
             if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
                 ifReg.lcdStat = true;
-                runDevices();
+                runDevices(es);
             }
 
             // all following clockx %x %x cycles in 4MHz
@@ -1386,7 +1431,7 @@ public:
 
             ppu.lcdStatus.modeFlag = 3;
             ppu.pixelTransfer(i);
-            runDevices();
+            runDevices(es);
             ppu.lcdStatus.modeFlag = 0;
             if (ppu.lcdStatus.hblankInterrupt) {
                 ppu.hblankInterrupt();
@@ -1479,7 +1524,8 @@ int main() {
     sf::Sprite sprite;
     sprite.setTexture(texture);
 
-    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin", pixels};
+//    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin", pixels};
+    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/tetris.gb", pixels};
 
     int instructionCount = 0;
 
@@ -1497,7 +1543,7 @@ int main() {
 
         ++instructionCount;
 
-        emu.run();
+        emu.run(events);
 
         texture.update(&pixels[0]);
         w.draw(sprite);

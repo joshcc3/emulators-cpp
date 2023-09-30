@@ -12,6 +12,7 @@ Debugging Sound: ALSOFT_LOGLEVEL=3 ALSOFT_LOGFILE=/tmp/alsoft.log
 
 https://www.copetti.org/writings/consoles/game-boy-advance/
 
+https://emudev.org/system_resources
 
 Step 2
 ===
