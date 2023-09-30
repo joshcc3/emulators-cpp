@@ -5,7 +5,7 @@
 #define GBA_EMULATOR_VIDEO_TEST_H
 
 //#define DEBUG
-//#define VERBOSE
+#define VERBOSE
 
 #include <algorithm>
 
@@ -26,6 +26,7 @@
 #include <fstream>
 #include <unistd.h>
 #include "audio_driver.h"
+#include "debug_utils.h"
 
 
 using namespace std;
@@ -297,8 +298,38 @@ public:
                         pc += 2;
                         break;
                     }
+                    case 0x30:
+                    case 0x31:
+                    case 0x32:
+                    case 0x33:
+                    case 0x34:
+                    case 0x35:
+                    case 0x37: {
+                        u8 op = vram[pc + 1];
+                        u8 &reg = registers[r[op]];
+                        reg = ((reg & 0xf) << 4) | (reg >> 4);
+                        f.zf = reg == 0;
+                        f.n = false;
+                        f.h = false;
+                        f.cy = false;
+                        clock += 8;
+                        pc += 2;
+                        break;
+                    }
+                    case 0x36: {
+                        u8 &reg = vram[hl];
+                        reg = ((reg & 0xf) << 4) | (reg >> 4);
+                        f.zf = reg == 0;
+                        f.n = false;
+                        f.h = false;
+                        f.cy = false;
+                        clock += 8;
+                        pc += 2;
+                        break;
+
+                    }
                     default:
-                        cerr << "Opcode not implemented: [" << opcode << "]." << endl;
+                        printf("CB - Opcode not implemented: [%x]", vram[pc + 1]);
                         exit(1);
                 }
                 break;
@@ -928,12 +959,6 @@ public:
                 clock += 4;
                 break;
             }
-            case 0x09: {
-                u16 updatedPC = ((u16) vram[sp + 1] << 8) | vram[sp];
-                auto func = [this]() { sp += 2; };
-                cpuFunc(16, updatedPC, f, func);
-                break;
-            }
             case 0xc3: {
                 u16 updatedPC = ((u16) vram[pc + 2] << 8) | vram[pc + 1];
                 clock += 16;
@@ -964,17 +989,6 @@ public:
                 clock += 8;
                 break;
             }
-
-            case 0xB1: {
-                a = a | c;
-                f.zf = a == 0;
-                f.n = 0;
-                f.h = 0;
-                f.cy = 0;
-                ++pc;
-                clock += 4;
-                break;
-            }
             case 0xFB: {
                 ime = true;
                 ++pc;
@@ -982,7 +996,7 @@ public:
                 break;
             }
             case 0xC0: {
-                if(!f.zf) {
+                if (!f.zf) {
                     u16 lower = vram[sp++];
                     u16 upper = vram[sp++];
                     u16 updated = (upper << 8) | lower;
@@ -995,12 +1009,126 @@ public:
                 break;
             }
             case 0xFA: {
-
+                u8 a8 = vram[pc + 1];
+                a = vram[0xFF00 | a8];
                 pc += 2;
                 clock += 12;
                 break;
             }
+            case 0xC8: {
+                if (f.zf) {
+                    u16 newAddr = (u16(vram[sp + 1]) << 8) | vram[sp];
+                    sp += 2;
+                    pc = newAddr;
+                    clock += 20;
+                } else {
+                    ++pc;
+                    clock += 8;
+                }
+                break;
+            }
+            case 0x34: {
+                f.h = (vram[hl] & 0xf) == 0xf;
+                u8 updatedVal = ++(vram[hl]);
+                ++pc;
+                clock += 12;
+                f.zf = updatedVal == 0;
+                f.n = false;
+                break;
+            }
+            case 0xD9: {
+                u16 updatedAddr = (u16(vram[sp + 1]) << 8) | vram[sp];
+                sp += 2;
+                ime = true;
+                pc = updatedAddr;
+                clock += 16;
+                break;
+            }
+            case 0x2F: {
+                a = ~a;
+                ++pc;
+                f.n = true;
+                f.h = true;
+                clock += 4;
+                break;
+            }
+            case 0xE6: {
+                u8 d8 = vram[pc + 1];
+                a = a & d8;
+                f.zf = a == 0;
+                f.n = false;
+                f.h = true;
+                f.cy = false;
+                pc += 2;
+                clock += 8;
 
+                break;
+            }
+            case 0xB0:
+            case 0xB1:
+            case 0xB2:
+            case 0xB3:
+            case 0xB4:
+            case 0xB5:
+            case 0xB7: {
+                u8 &reg = registers[r[opcode & 0xF]];
+                a = a | reg;
+                f.zf = a == 0;
+                f.n = false;
+                f.h = false;
+                f.cy = false;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0xCF:
+            case 0xDF:
+            case 0xEF:
+            case 0xFF: {
+                array<u8, 4> addrs = {0x08, 0x18, 0x28, 0x38};
+                u16 jmpAddr = vram[addrs[(opcode >> 4) - 0xC]];
+                u8 msb = pc & 0xf;
+                u8 lsb = pc >> 8;
+                vram[--sp] = msb;
+                vram[--sp] = lsb;
+                pc = jmpAddr;
+                clock += 16;
+                break;
+            }
+            case 0x09:
+            case 0x19:
+            case 0x29:
+            case 0x39: {
+                array<u16 *, 4> regs = {&bc, &de, &hl, &sp};
+                u16 reg = *regs[opcode >> 4];
+                ++pc;
+                clock += 8;
+                f.n = false;
+                f.h = (hl & 0xFF) >= 0xFF - (reg & 0xFF);
+                f.cy = hl >= 0xFFFF - reg;
+                hl += reg;
+                break;
+            }
+            case 0x0: {
+                pc += 1;
+                clock += 4;
+                break;
+            }
+            case 0xFC: {
+                break;
+            }
+
+/*
+ *            case 0x19: {
+
+                pc;
+                clock;
+                f;
+                sp;
+                break;
+            }
+
+ */
             default: {
                 printf("Opcode not implemented: [%x]", opcode);
                 exit(1);
@@ -1080,7 +1208,7 @@ public:
 
     uint64_t clock;
 
-    PPU(const string &bootROM, vector<sf::Uint8> &pixels, vector<u8> &ram)
+    PPU(const string &bootROM, const string &cartridgeROM, vector<sf::Uint8> &pixels, vector<u8> &ram)
             : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
               wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
               obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
@@ -1092,6 +1220,8 @@ public:
         debugInitializeCartridgeHeader();
         std::ifstream input(bootROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
+        std::ifstream input2(cartridgeROM, std::ios::binary);
+        std::copy(std::istreambuf_iterator(input), {}, vram.begin() + 0x100);
     }
 
     void pixelTransfer(int y) {
@@ -1173,7 +1303,7 @@ public:
                     }
                 }
 
-                if (v.size() > 0) {
+                if (!v.empty()) {
                     auto visible = *min_element(v.begin(), v.end(), PixelComparator());
                     drawColorToScreen(x, y, visible.color);
                 }
@@ -1281,6 +1411,9 @@ public:
     }
 
     void debugInitializeCartridgeHeader() {
+#ifdef VERBOSE
+        dumpCartridgeHeader(vram);
+#endif
 
 #ifdef DEBUG
         vram[0x100] = 0;
@@ -1418,8 +1551,8 @@ public:
     Joypad jp;
     InterruptFlag &ifReg;
 
-    gb_emu(const string &bootRom, vector<u8> &pixels) :
-            ram(0x10000, 0), ppu{bootRom, pixels, ram}, cpu{ram},
+    gb_emu(const string &bootROM, const string &cartridgeROM, vector<u8> &pixels) :
+            ram(0x10000, 0), ppu{bootROM, cartridgeROM, pixels, ram}, cpu{ram},
             ad{ram}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])},
             jp{ram} {
 
@@ -1466,9 +1599,6 @@ public:
 
             usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
         }
-#ifdef VERBOSE
-        cout << "Screen render" << endl;
-#endif
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
             ifReg.vBlank = true;
@@ -1491,8 +1621,6 @@ public:
         auto p2 = chrono::high_resolution_clock::now();
         auto pd = p2 - p1;
         cout << "Screen Render Time taken: " << pd.count() / 1000000.0 << endl;
-        cout << "CIncs [ppu, cpu, ad]: " << ppu.clock - startingClock[0] << ", " << cpu.clock - startingClock[1] << ", "
-             << ad.clock - startingClock[2] << endl;
 #endif
 
     }
@@ -1532,9 +1660,6 @@ int main() {
 
     vector<sf::Uint8> pixels(PPU::DEVICE_WIDTH * PPU::DEVICE_HEIGHT * 4, 0);
 
-    //    chip8 emu{"C:\\Users\\jerem\\CLionProjects\\gba_emulator\\ibm_logo.ch8", HEIGHT, WIDTH, pixels};
-//    chip8 emu{"/home/jc/projects/cpp/emulators-cpp/tetris.ch8", HEIGHT, WIDTH, pixels};
-
 
     sf::Texture texture;
     if (!texture.create(PPU::DEVICE_WIDTH, PPU::DEVICE_HEIGHT)) {
@@ -1549,8 +1674,9 @@ int main() {
     sf::Sprite sprite;
     sprite.setTexture(texture);
 
-//    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin", pixels};
-    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/tetris.gb", pixels};
+    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin",
+               "/home/jc/projects/cpp/emulators-cpp/gameboy/tetris.gb", pixels};
+//    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/PokemonReg.gb", pixels};
 
     int instructionCount = 0;
 

@@ -16,7 +16,7 @@ add_executable(gba_emulator #main.cpp
         chip8.h gameboy/gameboy.cpp gameboy/gameboy.h gameboy/gb_audio.cpp gameboy/gb_audio.h
         #gameboy/audio_test.cpp gameboy/audio_test.h
         gameboy/video_test.cpp gameboy/video_test.h
-        gameboy/audio_driver.cpp gameboy/audio_driver.h)
+        gameboy/audio_driver.cpp gameboy/audio_driver.h gameboy/debug_utils.h)
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound)
 #target_link_libraries(gba_emulator /home/jc/CLionProjects/SFML/lib/libsfml-audio-ringBufferSize.a /home/jc/CLionProjects/SFML/lib/libsfml-system-ringBufferSize.a)
