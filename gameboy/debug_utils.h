@@ -51,8 +51,8 @@ std::map<u8, std::string> cartridgeTypeDescr =
 struct CartridgeHeader {
     u8 entryPoint[3];
     u8 nintendoLogo[48];
-    u8 title[0x143 - 0x134 + 1];
-    u8 licenseCode[0x145 - 0x144 + 1];
+    char title[0x143 - 0x134 + 1];
+    char licenseCode[0x145 - 0x144 + 1];
     u8 sgbFlag[1];
     u8 cartridgeTyp;
     u8 sizeType;
@@ -89,7 +89,8 @@ std::map<u8, std::string> ramSizeDescr = {
 void dumpCartridgeHeader(std::vector<u8> &ram) {
 
     auto header = *reinterpret_cast<CartridgeHeader *>(&ram[0x100]);
-    std::cout << "entryPoint: " << header.entryPoint << std::endl;
+    printf("entryPoint: %x%x%x", header.entryPoint[0], header.entryPoint[1], header.entryPoint[2]);
+    std::cout << std::endl;
     std::cout << "nintendoLogo: " << header.nintendoLogo << std::endl;
     std::cout << "title: " << header.title << std::endl;
     std::cout << "licenseCode: " << header.licenseCode << std::endl;

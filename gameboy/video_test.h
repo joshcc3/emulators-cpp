@@ -166,7 +166,7 @@ public:
     InterruptFlag &ifReg;
     InterruptEnable &ieReg;
 
-    CPU(vector<u8> &vram) : vram{vram}, clock{0}, ime{false},
+    CPU(vector<u8> &vram) : vram{vram}, clock{0x0}, ime{false},
                             ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
                             ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
         initializeRegisters();
@@ -1218,10 +1218,10 @@ public:
               clock{0} {
 
         debugInitializeCartridgeHeader();
-        std::ifstream input(bootROM, std::ios::binary);
+        std::ifstream input(cartridgeROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
-        std::ifstream input2(cartridgeROM, std::ios::binary);
-        std::copy(std::istreambuf_iterator(input), {}, vram.begin() + 0x100);
+        std::ifstream input2(bootROM, std::ios::binary);
+        std::copy(std::istreambuf_iterator(input2), {}, vram.begin());
     }
 
     void pixelTransfer(int y) {
@@ -1565,6 +1565,8 @@ public:
         auto p1 = chrono::high_resolution_clock::now();
         uint64_t startingClock[3] = {ppu.clock, cpu.clock, ad.clock};
 #endif
+        runDevices(es);
+        es.clear();
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
             uint64_t startClock = ppu.clock;
             ppu.ly = i;
