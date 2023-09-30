@@ -13,7 +13,7 @@
 #include <memory>
 #include <functional>
 
-//#define AUDIO_NOT_WORKING
+#define AUDIO_NOT_WORKING
 //#define DEBUG
 
 using u8 = uint8_t;
@@ -524,11 +524,11 @@ public:
                              {6, 2}};
         u8 low = waveForm[duty][0];
         u8 high = waveForm[duty][1];
-        int volStepCounter = volStep * volSweep / 64.0 * 1e9;
-        int soundLength = (64 - len) / 256.0 * 1e9 / (8 * oneClock);
+        long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
+        int soundLength = 1e9 / 256.0 * (64 - len) / (8 * oneClock);
         std::cout << "TimeB " << soundLength << std::endl;
         for (int i = 0; i < soundLength; ++i) {
-            finalVol = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounter, 0), 100);
+            finalVol = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounterNs, 0LL), 100LL);
             ch2.generateGB(low * oneClock, 0);
             ch2.generateGB(high * oneClock, finalVol);
         }
@@ -558,8 +558,8 @@ public:
 
         const u8 low = waveForm[duty][0];
         const u8 high = waveForm[duty][1];
-        const long long volStepCounterNs = volStep * volSweep / 64.0 * 1e9;
-        const long long soundLengthNs = (64 - len) / 256.0 * 1e9;
+        const long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
+        const long long soundLengthNs = 1e9/256.0 * (64 - len);
         std::cout << "TimeA " << soundLengthNs << std::endl;
         finalFreq = initialFreq;
         long long timePassedNs = 0;
@@ -585,7 +585,7 @@ public:
         uint32_t freqFmt = w.getFreq();
 
 
-        long long soundLenNs = 1e9 * (256 - soundLenFmt) / 256;
+        long long soundLenNs = 1e9 / 256.0 * (256 - soundLenFmt);
         uint16_t soundScale = (outputLevel - 1);
         uint16_t freq = 65536 / (2048 - freqFmt);
         long long oneClock = 1e9 / freq / 32;

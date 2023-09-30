@@ -121,7 +121,7 @@ public:
 
     void processKeyEvents(const std::vector<sf::Event> &events) {
         for (auto event: events) {
-            if ((event.type & (KEYPRESS | KEYRELEASED)) &&
+            if ((event.type == KEYPRESS || event.type == KEYRELEASED) &&
                 interestKeys.find(event.key.scancode) != interestKeys.end()) {
                 auto key = keyMap[event.key.scancode];
                 if (event.type & sf::Event::KeyPressed) {
@@ -298,7 +298,7 @@ public:
                         break;
                     }
                     default:
-                        cerr  << "Opcode not implemented: [" << opcode << "]." << endl;
+                        cerr << "Opcode not implemented: [" << opcode << "]." << endl;
                         exit(1);
                 }
                 break;
@@ -935,7 +935,7 @@ public:
                 break;
             }
             case 0xc3: {
-                u16 updatedPC = ((u16)vram[pc + 2] << 8) | vram[pc + 1];
+                u16 updatedPC = ((u16) vram[pc + 2] << 8) | vram[pc + 1];
                 clock += 16;
                 pc = updatedPC;
                 break;
@@ -975,9 +975,34 @@ public:
                 clock += 4;
                 break;
             }
+            case 0xFB: {
+                ime = true;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0xC0: {
+                if(!f.zf) {
+                    u16 lower = vram[sp++];
+                    u16 upper = vram[sp++];
+                    u16 updated = (upper << 8) | lower;
+                    pc = updated;
+                    clock += 20;
+                } else {
+                    ++pc;
+                    clock += 8;
+                }
+                break;
+            }
+            case 0xFA: {
+
+                pc += 2;
+                clock += 12;
+                break;
+            }
 
             default: {
-                printf("Opcode not implemented: [%x]",  opcode);
+                printf("Opcode not implemented: [%x]", opcode);
                 exit(1);
             }
         }
@@ -1400,7 +1425,7 @@ public:
 
     }
 
-    void run(vector<sf::Event>& es) {
+    void run(vector<sf::Event> &es) {
 
         // need to set the status registers:
 #ifdef VERBOSE
