@@ -437,10 +437,6 @@ public:
             auto elapsed = (now - clocked);
             clocked = now;
             auto samples = flush();
-            if (samples) {
-                std::cout << "Time since flush: " << elapsed.count() / 1e6 << " " << samples << " - samples"
-                          << std::endl;
-            }
         }
 
         clock = cpuClock;

@@ -4,8 +4,8 @@
 #ifndef GBA_EMULATOR_VIDEO_TEST_H
 #define GBA_EMULATOR_VIDEO_TEST_H
 
-//#define DEBUG
-#define VERBOSE
+#define DEBUG
+//#define VERBOSE
 
 #include <algorithm>
 
@@ -49,7 +49,8 @@ struct InterruptEnable {
     u8 _unused: 3;
 };
 
-
+// jr_000_037e, jr_000_03e9, jr_000_045a, jr_000_06c8, jr_000_08a4, jr_000_1062, jr_000_1160, jr_000_12ad
+//jr_000_13df, jr_000_147d, jr_000_1577, jr_000_160d, jr_000_1ae0, jr_000_2828
 struct LCDControl {
     bool bgDisplayEnabled: 1;
     bool objSpriteDisplayEnable: 1;
@@ -166,11 +167,10 @@ public:
     InterruptFlag &ifReg;
     InterruptEnable &ieReg;
 
-    CPU(vector<u8> &vram) : vram{vram}, clock{0x0}, ime{false},
+    CPU(vector<u8> &vram) : vram{vram}, clock{0}, ime{false},
                             ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
                             ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
         initializeRegisters();
-        clock = 0;
 
         vram[0xFF40] = 0x91;
         vram[0xFF42] = 0x00;
@@ -190,7 +190,7 @@ public:
         de = 0x00D8;
         hl = 0x014D;
         sp = 0xFFFE;
-        pc = 0x0000;
+        pc = 0x0100;
     }
 
     void processInterrupts() {
@@ -223,17 +223,16 @@ public:
         }
     }
 
+    // at instruction 0x26b - turned on devices and stuff
     void fetchDecodeExecute() {
         u8 r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
         u8 opcode = vram[pc];
         switch (opcode) {
-
             case 0x01: // ld sp 0x
                 clock += 12;
                 bc = (u16 &) (vram[pc + 1]);
                 pc += 3;
                 break;
-
             case 0x11:
                 clock += 12;
                 de = (u16 &) (vram[pc + 1]);
@@ -306,7 +305,7 @@ public:
                     case 0x35:
                     case 0x37: {
                         u8 op = vram[pc + 1];
-                        u8 &reg = registers[r[op]];
+                        u8 &reg = registers[r[op & 0xf]];
                         reg = ((reg & 0xf) << 4) | (reg >> 4);
                         f.zf = reg == 0;
                         f.n = false;
@@ -327,6 +326,16 @@ public:
                         pc += 2;
                         break;
 
+                    }
+                    case 0xCE:
+                    case 0xDE:
+                    case 0xEE:
+                    case 0xFE: {
+                        u8 ix = ((vram[pc + 1] >> 4) - 0xC)*2 + 1;
+                        vram[hl] |= (1 << ix);
+                        pc += 2;
+                        clock += 16;
+                        break;
                     }
                     default:
                         printf("CB - Opcode not implemented: [%x]", vram[pc + 1]);
@@ -884,10 +893,18 @@ public:
             }
             case 0xC1:
             case 0xD1:
-            case 0xE1:
+            case 0xE1: {
+                u16* regs[3] = {&bc, &de, &hl};
+                u16* reg = regs[(opcode >> 4) - 0xC];
+                clock += 12;
+                *reg = ((u16) (vram[sp + 1]) << 8) | vram[sp];
+                sp += 2;
+                ++pc;
+                break;
+            }
             case 0xF1: {
                 clock += 12;
-                bc = ((u16) (vram[sp + 1]) << 8) | vram[sp];
+                af = ((u16) (vram[sp + 1]) << 8) | vram[sp];
                 sp += 2;
                 ++pc;
                 break;
@@ -1009,10 +1026,10 @@ public:
                 break;
             }
             case 0xFA: {
-                u8 a8 = vram[pc + 1];
-                a = vram[0xFF00 | a8];
-                pc += 2;
-                clock += 12;
+                u16 a16 = (u16&)vram[pc + 1];
+                a = vram[a16];
+                pc += 3;
+                clock += 16;
                 break;
             }
             case 0xC8: {
@@ -1086,9 +1103,9 @@ public:
             case 0xEF:
             case 0xFF: {
                 array<u8, 4> addrs = {0x08, 0x18, 0x28, 0x38};
-                u16 jmpAddr = vram[addrs[(opcode >> 4) - 0xC]];
-                u8 msb = pc & 0xf;
-                u8 lsb = pc >> 8;
+                u16 jmpAddr = addrs[(opcode >> 4) - 0xC];
+                u8 msb = pc >> 8;
+                u8 lsb = pc & 0xFF;
                 vram[--sp] = msb;
                 vram[--sp] = lsb;
                 pc = jmpAddr;
@@ -1129,6 +1146,61 @@ public:
             }
 
  */
+            case 0x80:
+            case 0x81:
+            case 0x82:
+            case 0x83:
+            case 0x84:
+            case 0x85:
+            case 0x87: {
+                clock += 8;
+                u8& reg = registers[r[opcode & 0xF]];
+                u8 data = reg;
+                u8 result = a + data;
+                f.zf = result == 0;
+                f.n = false;
+                f.h = (0xf - (a & 0xf)) > (data & 0xf);
+                f.cy = 0xff - a > data;
+                a = result;
+                ++pc;
+                break;
+            }
+            case 0x4E:
+            case 0x5E:
+            case 0x6E:
+            case 0x7E: {
+                u8 *arr[4] = {&c, &e, &l, &a};
+                u8& reg = *arr[(opcode >> 4) - 4];
+                reg = vram[hl];
+                clock += 8;
+                ++pc;
+                break;
+            }
+            case 0x46:
+            case 0x56:
+            case 0x66: {
+                u8* arr[3] = {&b, &d, &h};
+                u8& reg = *arr[(opcode >> 4) - 4];
+                reg = vram[hl];
+                clock += 8;
+                ++pc;
+                break;
+            }
+            case 0xE9: {
+                pc = hl;
+                clock += 4;
+                break;
+            }
+            case 0xF6: {
+                a |= vram[pc + 1];
+                pc += 2;
+                clock += 8;
+                f.zf = a == 0;
+                f.n = false;
+                f.h = false;
+                f.cy = false;
+                break;
+            }
             default: {
                 printf("Opcode not implemented: [%x]", opcode);
                 exit(1);
@@ -1220,8 +1292,8 @@ public:
         debugInitializeCartridgeHeader();
         std::ifstream input(cartridgeROM, std::ios::binary);
         std::copy(std::istreambuf_iterator(input), {}, vram.begin());
-        std::ifstream input2(bootROM, std::ios::binary);
-        std::copy(std::istreambuf_iterator(input2), {}, vram.begin());
+//        std::ifstream input2(bootROM, std::ios::binary);
+//        std::copy(std::istreambuf_iterator(input2), {}, vram.begin());
     }
 
     void pixelTransfer(int y) {
@@ -1282,24 +1354,26 @@ public:
                 }
 
 
-                for (auto s: visibleSprites) {
-                    OAMEntry &e = oamEntries[s];
-                    if (e.xPos <= x + 8 && x + 8 <= e.xPos) {
-                        u8 row = !e.flags.yFlip ? y - e.yPos : 8 - (y - e.yPos);
-                        u16 color = getTileData(e.tileNumber, row, 0x8000);
-                        u8 colorShade;
-                        u8 &palette = e.flags.palette == 0 ? obp0 : obp1;
-                        u8 column = !e.flags.xFlip ? x - e.xPos : 8 - (x - e.xPos);
-                        auto col = getPixelColor(column, color, palette, colorShade);
-                        uint32_t priority;
-                        if (colorShade == 0) {
-                            priority = 0;
-                        } else if (e.flags.objToBGPrio == 1) {
-                            priority = 3;
-                        } else {
-                            priority = (((255 - x) << 8) | (255 - e.tileNumber));
+                if(lcdControl.objSpriteDisplayEnable) {
+                    for (auto s: visibleSprites) {
+                        OAMEntry &e = oamEntries[s];
+                        if (e.xPos <= x + 8 && x + 8 <= e.xPos) {
+                            u8 row = !e.flags.yFlip ? y - e.yPos : 8 - (y - e.yPos);
+                            u16 color = getTileData(e.tileNumber, row, 0x8000);
+                            u8 colorShade;
+                            u8 &palette = e.flags.palette == 0 ? obp0 : obp1;
+                            u8 column = !e.flags.xFlip ? x - e.xPos : 8 - (x - e.xPos);
+                            auto col = getPixelColor(column, color, palette, colorShade);
+                            uint32_t priority;
+                            if (colorShade == 0) {
+                                priority = 0;
+                            } else if (e.flags.objToBGPrio == 1) {
+                                priority = 3;
+                            } else {
+                                priority = (((255 - x) << 8) | (255 - e.tileNumber));
+                            }
+                            v.emplace_back(priority, colorShade, col);
                         }
-                        v.emplace_back(priority, colorShade, col);
                     }
                 }
 
@@ -1415,34 +1489,32 @@ public:
         dumpCartridgeHeader(vram);
 #endif
 
-#ifdef DEBUG
-        vram[0x100] = 0;
-        vram[0x102] = 0;
-
-        array<u8, 56> nintendoHeaderBmp = {
-                0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
-                0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
-                0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
-                0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C
-        };
-
-        for (int i = 0; i < nintendoHeaderBmp.size(); ++i) {
-            vram[0x104 + i] = nintendoHeaderBmp[i];
-        }
-
-        array<u8, 16> title = {'J', 'O', 'S', 'H', 'B', 'O', 'Y', 'A', 'D', 'V', 'E', 'N', 'T', 'U', 'R', 'E'};
-        for (int i = 0; i < title.size(); ++i) {
-            vram[0x134 + i] = title[i];
-        }
-
-        vram[0x0147] = 0x0;
-        vram[0x0148] = 0;
-        vram[0x149] = 0;
-
-        assert(vram[0x0146] == 0);
-        std::cout << "Cartridge memory type: " << vram[0x147] << std::endl;
-        assert(vram[0x149] == 0);
-#endif
+//        vram[0x100] = 0;
+//        vram[0x102] = 0;
+//
+//        array<u8, 56> nintendoHeaderBmp = {
+//                0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
+//                0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
+//                0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+//                0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C
+//        };
+//
+//        for (int i = 0; i < nintendoHeaderBmp.size(); ++i) {
+//            vram[0x104 + i] = nintendoHeaderBmp[i];
+//        }
+//
+//        array<u8, 16> title = {'J', 'O', 'S', 'H', 'B', 'O', 'Y', 'A', 'D', 'V', 'E', 'N', 'T', 'U', 'R', 'E'};
+//        for (int i = 0; i < title.size(); ++i) {
+//            vram[0x134 + i] = title[i];
+//        }
+//
+//        vram[0x0147] = 0x0;
+//        vram[0x0148] = 0;
+//        vram[0x149] = 0;
+//
+//        assert(vram[0x0146] == 0);
+//        std::cout << "Cartridge memory type: " << vram[0x147] << std::endl;
+//        assert(vram[0x149] == 0);
 
     }
 
@@ -1575,6 +1647,8 @@ public:
             if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
                 ifReg.lcdStat = true;
                 runDevices(es);
+            } else {
+                ifReg.lcdStat = false;
             }
 
             // all following clockx %x %x cycles in 4MHz
@@ -1599,7 +1673,9 @@ public:
             ppu.hBlank();
             runDevices(es);
 
-            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+#ifndef DEBUG
+//            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+#endif
         }
         ppu.lcdStatus.modeFlag = 1;
         if (ppu.lcdStatus.vblankInterrupt) {
@@ -1612,6 +1688,7 @@ public:
             ppu.ly = ppu.PIXEL_ROWS + i;
             runDevices(es);
         }
+        ifReg.vBlank = false;
 
         if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
             cpu.clock = cpu.clock & ((1 << 22) - 1);
