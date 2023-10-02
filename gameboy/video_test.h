@@ -331,10 +331,34 @@ public:
                     case 0xDE:
                     case 0xEE:
                     case 0xFE: {
-                        u8 ix = ((vram[pc + 1] >> 4) - 0xC)*2 + 1;
+                        u8 ix = ((vram[pc + 1] >> 4) - 0xC) * 2 + 1;
                         vram[hl] |= (1 << ix);
                         pc += 2;
                         clock += 16;
+                        break;
+                    }
+                    case 0x47:
+                    case 0x57:
+                    case 0x67:
+                    case 0x77: {
+                        u8 bit = ((vram[pc + 1] >> 4) - 0x4)*2;
+                        u8 bitVal = a >> bit;
+                        pc += 2;
+                        clock += 8;
+                        f.zf = bitVal == 0;
+                        f.n = false;
+                        f.h = true;
+                        break;
+                    }
+                    case 0x87:
+                    case 0x97:
+                    case 0xA7:
+                    case 0xB7: {
+                        u8 bit = ((vram[pc + 1] >> 4) - 0x8)*2;
+                        u8 bitVal = ~(1 << bit);
+                        a = a & bitVal;
+                        pc += 2;
+                        clock += 8;
                         break;
                     }
                     default:
@@ -894,8 +918,8 @@ public:
             case 0xC1:
             case 0xD1:
             case 0xE1: {
-                u16* regs[3] = {&bc, &de, &hl};
-                u16* reg = regs[(opcode >> 4) - 0xC];
+                u16 *regs[3] = {&bc, &de, &hl};
+                u16 *reg = regs[(opcode >> 4) - 0xC];
                 clock += 12;
                 *reg = ((u16) (vram[sp + 1]) << 8) | vram[sp];
                 sp += 2;
@@ -1026,7 +1050,7 @@ public:
                 break;
             }
             case 0xFA: {
-                u16 a16 = (u16&)vram[pc + 1];
+                u16 a16 = (u16 &) vram[pc + 1];
                 a = vram[a16];
                 pc += 3;
                 clock += 16;
@@ -1104,8 +1128,8 @@ public:
             case 0xFF: {
                 array<u8, 4> addrs = {0x08, 0x18, 0x28, 0x38};
                 u16 jmpAddr = addrs[(opcode >> 4) - 0xC];
-                u8 msb = pc >> 8;
-                u8 lsb = pc & 0xFF;
+                u8 msb = (pc + 1) >> 8;
+                u8 lsb = (pc + 1) & 0xFF;
                 vram[--sp] = msb;
                 vram[--sp] = lsb;
                 pc = jmpAddr;
@@ -1154,7 +1178,7 @@ public:
             case 0x85:
             case 0x87: {
                 clock += 8;
-                u8& reg = registers[r[opcode & 0xF]];
+                u8 &reg = registers[r[opcode & 0xF]];
                 u8 data = reg;
                 u8 result = a + data;
                 f.zf = result == 0;
@@ -1170,7 +1194,7 @@ public:
             case 0x6E:
             case 0x7E: {
                 u8 *arr[4] = {&c, &e, &l, &a};
-                u8& reg = *arr[(opcode >> 4) - 4];
+                u8 &reg = *arr[(opcode >> 4) - 4];
                 reg = vram[hl];
                 clock += 8;
                 ++pc;
@@ -1179,8 +1203,8 @@ public:
             case 0x46:
             case 0x56:
             case 0x66: {
-                u8* arr[3] = {&b, &d, &h};
-                u8& reg = *arr[(opcode >> 4) - 4];
+                u8 *arr[3] = {&b, &d, &h};
+                u8 &reg = *arr[(opcode >> 4) - 4];
                 reg = vram[hl];
                 clock += 8;
                 ++pc;
@@ -1199,6 +1223,22 @@ public:
                 f.n = false;
                 f.h = false;
                 f.cy = false;
+                break;
+            }
+            case 0x12: {
+                vram[de] = a;
+                ++pc;
+                clock += 8;
+                break;
+            }
+            case 0xca: {
+                if(f.zf) {
+                    pc = (u16(vram[pc + 2]) << 8) | vram[pc + 1];
+                    clock += 16;
+                } else {
+                    pc += 3;
+                    clock += 12;
+                }
                 break;
             }
             default: {
@@ -1354,7 +1394,7 @@ public:
                 }
 
 
-                if(lcdControl.objSpriteDisplayEnable) {
+                if (lcdControl.objSpriteDisplayEnable) {
                     for (auto s: visibleSprites) {
                         OAMEntry &e = oamEntries[s];
                         if (e.xPos <= x + 8 && x + 8 <= e.xPos) {
@@ -1674,7 +1714,7 @@ public:
             runDevices(es);
 
 #ifndef DEBUG
-//            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+            //            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
 #endif
         }
         ppu.lcdStatus.modeFlag = 1;
