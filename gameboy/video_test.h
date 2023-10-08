@@ -341,7 +341,7 @@ public:
                     case 0x57:
                     case 0x67:
                     case 0x77: {
-                        u8 bit = ((vram[pc + 1] >> 4) - 0x4)*2;
+                        u8 bit = ((vram[pc + 1] >> 4) - 0x4) * 2;
                         u8 bitVal = a >> bit;
                         pc += 2;
                         clock += 8;
@@ -354,7 +354,7 @@ public:
                     case 0x97:
                     case 0xA7:
                     case 0xB7: {
-                        u8 bit = ((vram[pc + 1] >> 4) - 0x8)*2;
+                        u8 bit = ((vram[pc + 1] >> 4) - 0x8) * 2;
                         u8 bitVal = ~(1 << bit);
                         a = a & bitVal;
                         pc += 2;
@@ -1232,7 +1232,7 @@ public:
                 break;
             }
             case 0xca: {
-                if(f.zf) {
+                if (f.zf) {
                     pc = (u16(vram[pc + 2]) << 8) | vram[pc + 1];
                     clock += 16;
                 } else {
@@ -1336,6 +1336,7 @@ public:
 //        std::copy(std::istreambuf_iterator(input2), {}, vram.begin());
     }
 
+
     void pixelTransfer(int y) {
 
         // screen dimensions: 166 x 143 (166 wide and 143 long)
@@ -1348,15 +1349,16 @@ public:
             //            draw all 0s to screen;
             // todo sprite map as well.
 
-            vector<uint8_t> visibleSprites{20, 0};
+            vector<uint8_t> visibleSprites{};
+            visibleSprites.reserve(10);
 
-            for (int i = 0; i < 40; ++i) {
+            for (int i = 0; i < 40 && visibleSprites.size() < 10; ++i) {
                 OAMEntry &e = oamEntries[i];
-                if (e.xPos != 0 && e.xPos < 168 && e.yPos <= y + 8 && e.yPos >= y + 8) {
+                u8 spriteHeight = lcdControl.objSpriteSize ? 16 : 8;
+                if (e.xPos != 0 && e.xPos < 168 && e.yPos < y + spriteHeight && e.yPos >= y) {
                     visibleSprites.push_back(i);
                 }
             }
-            visibleSprites.resize(10);
             vector<PixelColor> v;
             v.reserve(12);
             for (int x = 0; x < PIXEL_COLUMNS; ++x) {
@@ -1395,11 +1397,15 @@ public:
 
 
                 if (lcdControl.objSpriteDisplayEnable) {
+                    u8 spriteHeight = lcdControl.objSpriteSize ? 16 : 8;
                     for (auto s: visibleSprites) {
                         OAMEntry &e = oamEntries[s];
-                        if (e.xPos <= x + 8 && x + 8 <= e.xPos) {
-                            u8 row = !e.flags.yFlip ? y - e.yPos : 8 - (y - e.yPos);
-                            u16 color = getTileData(e.tileNumber, row, 0x8000);
+                        if (e.xPos < x + 8 && x <= e.xPos) {
+                            u8 row = !e.flags.yFlip ? y - e.yPos : spriteHeight - (y - e.yPos);
+
+                            u16 color = getTileData((e.tileNumber & (~lcdControl.objSpriteSize)) + (row >> 3),
+                                                    row % 8,
+                                                    0x8000);
                             u8 colorShade;
                             u8 &palette = e.flags.palette == 0 ? obp0 : obp1;
                             u8 column = !e.flags.xFlip ? x - e.xPos : 8 - (x - e.xPos);
