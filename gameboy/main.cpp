@@ -1,8 +1,6 @@
 //
 // Created by jc on 24/09/23.
 //
-#ifndef GBA_EMULATOR_VIDEO_TEST_H
-#define GBA_EMULATOR_VIDEO_TEST_H
 
 #define DEBUG
 //#define VERBOSE
@@ -590,10 +588,6 @@ public:
                 clock += 8;
                 a = vram[de];
                 ++pc;//
-// Created by jc on 24/09/23.
-//
-
-
                 break;
             }
             case 0xCD: {
@@ -1830,7 +1824,6 @@ int main() {
 }
 
 
-#endif //GBA_EMULATOR_VIDEO_TEST_H
 
 /*
  *
