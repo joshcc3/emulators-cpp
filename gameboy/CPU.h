@@ -47,16 +47,16 @@ public:
 
     uint64_t clock;
 
-    std::vector<u8> &vram;
+    MemoryRef vram;
 
     bool ime;
 
     InterruptFlag &ifReg;
     InterruptEnable &ieReg;
 
-    CPU(std::vector<u8> &vram) : vram{vram}, clock{0}, ime{false},
-                                 ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
-                                 ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
+    CPU(MemoryRef vram) : vram{vram}, clock{0}, ime{false},
+                          ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
+                          ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
         initializeRegisters();
 
         vram[0xFF40] = 0x91;

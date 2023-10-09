@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(gba_emulator)
-#project(shared_mem)
-#project(leetcode)
-#project(chip8)
-#project(audio_test)
+project(shared_mem1)
+project(shared_mem2)
+project(leetcode)
+project(chip8)
+project(audio_test)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -15,27 +16,25 @@ find_package(SFML 2.6.0 REQUIRED COMPONENTS audio network graphics window system
 
 find_package(Boost 1.78.0 COMPONENTS program_options REQUIRED)
 
-#add_executable(
-#        shared_mem
-#        boost_test.cpp
-#)
-#
-#add_executable(
-#        chip8
-#        chip8/chip8.cpp
-#        chip8/chip8.h
-#)
-#
-#add_executable(
-#        leetcode
-#        gameboy/stacksAndQueues.cpp gameboy/stacksAndQueues.h
-#)
-#
-#add_executable(
-#        audio_test
-#        gameboy/audio_test.cpp
-#        gameboy/video_test.h
-#)
+add_executable(
+        shared_mem1
+        boost_test.cpp
+)
+add_executable(
+        shared_mem2
+        boost_test2.cpp
+)
+
+add_executable(
+        chip8
+        chip8/chip8.cpp
+        chip8/chip8.h
+)
+
+add_executable(
+        leetcode
+        gameboy/stacksAndQueues.cpp gameboy/stacksAndQueues.h
+)
 
 add_executable(
         gba_emulator
@@ -46,6 +45,8 @@ add_executable(
         gameboy/PPU.cpp
         gameboy/PPU.h
         gameboy/structs.h
+        gameboy/ShmAlloc.cpp
+        gameboy/ShmAlloc.h
 )
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})

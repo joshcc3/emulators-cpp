@@ -37,15 +37,15 @@ public:
         u8 column: 4;
         u8 row: 4;
     };
-    Memory ram;
+    MemoryRef ram;
     u8 &jReg;
     InterruptFlag &ifReg;
 
     std::set<Scancode> interestKeys;
     std::map<Scancode, JoypadBit> keyMap;
 
-    Joypad(Memory ram) : ram{ram}, jReg{ram[0xFF00]},
-                              ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+    Joypad(MemoryRef ram) : ram{ram}, jReg{ram[0xFF00]},
+                            ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
         std::vector<Scancode> events = {Scancode::A, Scancode::B, Scancode::P, Scancode::L, Scancode::Left,
                                         Scancode::Right,
                                         Scancode::Up, Scancode::Down};

@@ -31,6 +31,7 @@
 #include "CPU.h"
 #include "Joypad.h"
 #include "Timer.h"
+#include "ShmAlloc.h"
 
 using namespace std;
 
@@ -38,7 +39,7 @@ using namespace std;
 class gb_emu {
 public:
 
-    Memory ram;
+    MemoryRef ram;
     PPU ppu;
     CPU cpu;
     AudioDriver ad;
@@ -46,7 +47,7 @@ public:
     Joypad jp;
     InterruptFlag &ifReg;
 
-    gb_emu(const string &bootROM, const string &cartridgeROM, vector<u8> &pixels, Memory ram) :
+    gb_emu(const string &bootROM, const string &cartridgeROM, vector<u8> &pixels, MemoryRef ram) :
             ram{ram}, ppu{bootROM, cartridgeROM, pixels, ram}, cpu{ram},
             ad{ram}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])},
             jp{ram} {
@@ -189,7 +190,10 @@ int main() {
     if (!std::filesystem::exists(cartridgeROM)) {
         cerr << "Cartridge ROM does not exist [" << cartridgeROM << "]" << endl;
     }
-    vector<u8> ram(0x10000, 0);
+
+
+    Memory ram;
+    ram.reserve(0x10000);
     gb_emu emu{bootROM, cartridgeROM, pixels, ram};
 //    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/PokemonReg.gb", pixels};
 

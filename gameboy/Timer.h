@@ -32,17 +32,17 @@ class Timer {
 public:
 
     u8 clock;
-    std::vector<u8> &ram;
+    MemoryRef ram;
     u8 &div;
     u8 &tima;
     u8 &tma;
     u8 &tac;
     InterruptFlag &ifReg;
 
-    Timer(std::vector<u8> &ram) : ram{ram},
-                                  div{ram[0xFF04]}, tima{ram[0xFF05]}, tma{ram[0xFF06]}, tac{ram[0xFF07]},
-                                  clock{0},
-                                  ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+    Timer(MemoryRef ram) : ram{ram},
+                           div{ram[0xFF04]}, tima{ram[0xFF05]}, tma{ram[0xFF06]}, tac{ram[0xFF07]},
+                           clock{0},
+                           ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
         tima = 0x00;
         tma = 0x00;
         tac = 0x00;

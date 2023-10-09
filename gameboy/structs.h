@@ -6,12 +6,16 @@
 #define GBA_EMULATOR_STRUCTS_H
 
 #include <cstdint>
+#include <SFML/Window/Event.hpp>
+#include "ShmAlloc.h"
+
 
 using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
-using Memory = std::vector<u8>&;
+using Memory = std::vector<u8, ShmAlloc<u8>>;
+using MemoryRef = std::vector<u8, ShmAlloc<u8>>&;
 
 
 constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;

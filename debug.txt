@@ -1,9 +1,11 @@
-experiences:
+experiences
+
+:
 excited
 looking for
 
 
-market making, dma, trader management, 
+market making, dma, trader management,
 
 
 openal-info - lists devices
@@ -15,7 +17,7 @@ alsamixer
 
 ALSA lib ../../pulse/pulse.c:242:(pulse_connect) PulseAudio: Unable to connect: Connection refused
 
-[jc@fedora untitled]$ g++ -o test test2.cpp -lasound && ./test 
+[jc@fedora untitled]$ g++ -o test test2.cpp -lasound && ./test
 
 
 https://alsa.opensrc.org/Proc_asound_documentation
@@ -33,7 +35,7 @@ sh-5.1$ mv main main.tmp; g++ -Wall main.cpp -o main -lm $(pkg-config --cflags -
 
 
 
-intel_hda - 
+intel_hda -
 
 
 I added a alsoft.conf file to indicate that realtime priority is not critical.
@@ -53,12 +55,14 @@ bg palette: 0xfc
 
 
 
-[jc@fedora emulators-cpp]$  g++ -I../SFML-2.6.0/include/ -L../SFML-2.6.0/lib/ -o test gameboy/video_test.cpp gameboy/video_test.h gameboy/audio_driver.cpp gameboy/audio_driver.h -lasound -lsfml-graphics -lsfml-system -lsfml-window && LD_LIBRARY_PATH=../SFML-2.6.0/lib/ ./test 
+[jc@fedora emulators-cpp]$  g++ -I../SFML-2.6.0/include/ -L../SFML-2.6.0/lib/ -o test gameboy/video_test.cpp gameboy/video_test.h gameboy/audio_driver.cpp gameboy/audio_driver.h -lasound -lsfml-graphics -lsfml-system -lsfml-window && LD_LIBRARY_PATH=../SFML-2.6.0/lib/ ./test
 
 writei failed unknown error
 screen scross too fast?
  -- need to pause after each instruction - finer grainer sleeps?
 buffer underrun, soudn is not prompt?
+
+Time b has very little sound.
 
 why is it skipping the first sound.
 why is it outputting much less sound.
@@ -74,3 +78,20 @@ http://www.csounds.com/manual/html/RealTimeLinux.html
 
 simulate the actual ppu - with lock free programming.
 
+69a5 sets up the sound.
+
+https://en.cppreference.com/w/cpp/atomic/memory_order
+
+dnf repoquery -l bsd-games
+
+
+
+c++ cosntructing vector from pre allocated buffer.
+Using custom allocator for shared
+
+vector with custom allocator.
+ppu from shared memory
+custom app that visualizes the vram, visualizes the tile map
+
+
+notes on allocators :  https://blog.csdn.net/arduousbonze/article/details/3624177
