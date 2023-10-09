@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <filesystem>
 #include <cstdint>
 #include <bitset>
 #include <vector>
@@ -223,6 +224,8 @@ public:
 
     // at instruction 0x26b - turned on devices and stuff
     void fetchDecodeExecute() {
+        static int counter = 0;
+        ++counter;
         u8 r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
         u8 opcode = vram[pc];
         switch (opcode) {
@@ -1149,21 +1152,7 @@ public:
                 clock += 4;
                 break;
             }
-            case 0xFC: {
-                break;
-            }
 
-/*
- *            case 0x19: {
-
-                pc;
-                clock;
-                f;
-                sp;
-                break;
-            }
-
- */
             case 0x80:
             case 0x81:
             case 0x82:
@@ -1235,18 +1224,14 @@ public:
                 }
                 break;
             }
+            case 0xFC: {
+                break;
+            }
             default: {
                 printf("Opcode not implemented: [%x]", opcode);
                 exit(1);
             }
         }
-    }
-
-    void cpuFunc(u8 clockInc, u16 pcUpdate, FlagReg &flags, function<void()> func) {
-        func();
-        clock += clockInc;
-        pc = pcUpdate;
-        f = flags;
     }
 
 };
@@ -1340,8 +1325,6 @@ public:
 
         if (lcdControl.lcdEnabled) {
 
-            //            draw all 0s to screen;
-            // todo sprite map as well.
 
             vector<uint8_t> visibleSprites{};
             visibleSprites.reserve(10);
@@ -1793,8 +1776,20 @@ int main() {
     sf::Sprite sprite;
     sprite.setTexture(texture);
 
-    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/DMG_ROM.bin",
-               "/home/jc/projects/cpp/emulators-cpp/gameboy/tetris.gb", pixels};
+    const string base_dir = "/home/jc/CLionProjects/gb_emulator/";
+    const string bootROM = base_dir + "DMG_ROM.bin";
+    const string cartridgeROM = base_dir + "gameboy/tetris.gb";
+
+    if(!std::filesystem::exists(base_dir)) {
+        cerr << "Base dir does not exist [" << base_dir << "]" << endl;
+    }
+    if(!std::filesystem::exists(bootROM)) {
+        cerr << "Boot rom does not exist [" << bootROM << "]" << endl;
+    }
+    if(!std::filesystem::exists(cartridgeROM)) {
+        cerr << "Cartridge ROM does not exist [" << cartridgeROM << "]" << endl;
+    }
+    gb_emu emu{bootROM, cartridgeROM, pixels};
 //    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/PokemonReg.gb", pixels};
 
     int instructionCount = 0;

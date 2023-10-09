@@ -37,9 +37,6 @@ https://github.com/gbadev-org/awesome-gbadev#emulator-development
 https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 
 
-https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
-
-
 https://rgbds.gbdev.io/docs/v0.4.2/gbz80.7/
 https://gekkio.fi/files/gb-docs/gbctr.pdf
 
