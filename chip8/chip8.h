@@ -337,8 +337,8 @@ struct instr_t {
     }
 };
 
-constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
-constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
+//constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
+//constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
 using Scancode = sf::Keyboard::Scancode;
 
 class keyboard_t {

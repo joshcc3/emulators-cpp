@@ -40,7 +40,7 @@ public:
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;
 
     std::vector<sf::Uint8> &pixels;
-    std::vector<u8> &vram; // reserve 8KB
+    Memory vram; // reserve 8KB
 
     u8 &scx;
     u8 &scy;
@@ -60,7 +60,7 @@ public:
 
     uint64_t clock;
 
-    PPU(const std::string &bootROM, const std::string &cartridgeROM, std::vector<sf::Uint8> &pixels, std::vector<u8> &ram)
+    PPU(const std::string &bootROM, const std::string &cartridgeROM, std::vector<sf::Uint8> &pixels, Memory &ram)
             : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
               wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
               obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},

@@ -11,6 +11,12 @@ using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
+using Memory = std::vector<u8>&;
+
+
+constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
+constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
+
 
 
 struct InterruptFlag {
