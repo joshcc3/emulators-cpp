@@ -1,5 +1,5 @@
 #include <iostream>
-#include "chip8.h"
+#include "chip8/chip8.h"
 #include <cstdint>
 #include <bitset>
 #include <vector>

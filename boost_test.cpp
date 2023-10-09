@@ -5,48 +5,37 @@
 #include <string>
 #include <iostream>
 
-int main(int argc, char *argv[])
-{
-   using namespace boost::interprocess;
+int main(int argc, char *argv[]) {
+    using namespace boost::interprocess;
 
-   if(argc == 1){  //Parent process
-      //Remove shared memory on construction and destruction
-      struct shm_remove 
-      {
-         shm_remove() { shared_memory_object::remove("MySharedMemory"); }
-         ~shm_remove(){ shared_memory_object::remove("MySharedMemory"); }
-      } remover;
+    //Remove shared memory on construction and destruction
+    struct shm_remove {
+        shm_remove() { shared_memory_object::remove("A"); }
 
-      //Create a shared memory object.
-      shared_memory_object shm (create_only, "MySharedMemory", read_write);
+        ~shm_remove() { shared_memory_object::remove("A"); }
+    } remover;
 
-      //Set size
-      shm.truncate(1000);
+    //Create a shared memory object.
+    shared_memory_object shm(create_only, "A", read_write);
 
-      //Map the whole shared memory in this process
-      mapped_region region(shm, read_write);
+    //Set size
+    shm.truncate(3000);
 
-      //Write all the memory to 1
-      std::memset(region.get_address(), 1, region.get_size());
-      std::cout << "Created shared memory launching child process" << std::endl;
-      //Launch child process
-      std::string s(argv[0]); s += " child ";
-      if(0 != std::system(s.c_str()))
-         return 1;
-   }
-   else{
-      //Open already created shared memory object.
-      shared_memory_object shm (open_only, "MySharedMemory", read_only);
+    //Map the whole shared memory in this process
+    mapped_region region(shm, read_write);
 
-      //Map the whole shared memory in this process
-      mapped_region region(shm, read_only);
+    //Write all the memory to 1
+    int *base_addr = static_cast<int*>(region.get_address());
+    std::cout << "Created shared memory launching child process" << std::endl;
+    //Launch child process
+    std::string s(argv[0]);
+    s += " child ";
+    while(true) {
+        int offs;
+        int value;
+        std::cin >> offs >> value;
+        base_addr[offs] = value;
+    }
 
-      //Check that memory was initialized to 1
-      char *mem = static_cast<char*>(region.get_address());
-      for(std::size_t i = 0; i < region.get_size(); ++i)
-         if(*mem++ != 1)
-            return 1;   //Error checking memory
-      std::cout << "Child process verification succeeded" << std::endl;
-   }
-   return 0;
+    return 0;
 }

@@ -1,27 +1,51 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(gba_emulator)
+project(shared_mem)
+project(leetcode)
+project(chip8)
+project(audio_test)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
-set(SFML_STATIC_LIBRARIES TRUE)
-
-set(SFML_DIR "/home/jc/projects/cpp/SFML-2.6.0/lib/cmake/SFML/")
+set(SFML_DIR "/home/jc/projects/cpp/SFML-2.6.0/lib/cmake/SFML")
 #set(SFML_DIR "/home/jc/CLionProjects/SFML")
 
-find_package(SFML 2.6.0 COMPONENTS graphics window system audio REQUIRED)
-Find_Boost()
+find_package(SFML 2.6.0 REQUIRED COMPONENTS audio network graphics window system)
 
-add_executable(gba_emulator #main.cpp
-        chip8.cpp
-        chip8.h gameboy/gameboy.cpp gameboy/gameboy.h gameboy/gb_audio.cpp gameboy/gb_audio.h
-        #gameboy/audio_test.cpp gameboy/audio_test.h
+find_package(Boost 1.78.0 COMPONENTS program_options REQUIRED)
+
+add_executable(
+        shared_mem
+        boost_test.cpp
+)
+
+add_executable(
+        chip8
+        chip8/chip8.cpp
+        chip8/chip8.h
+)
+
+add_executable(
+        leetcode
+        gameboy/stacksAndQueues.cpp gameboy/stacksAndQueues.h
+)
+
+add_executable(
+        audio_test
+        gameboy/audio_test.cpp
+)
+
+add_executable(
+        gba_emulator #main.cpp
+        gameboy/gameboy.cpp gameboy/gameboy.h gameboy/gb_audio.cpp gameboy/gb_audio.h
         #gameboy/video_test.cpp
         gameboy/video_test.h
-        gameboy/audio_driver.cpp gameboy/audio_driver.h
-        gameboy/debug_utils.h gameboy/stacksAndQueues.cpp gameboy/stacksAndQueues.h)
+        gameboy/audio_driver.cpp
+        gameboy/audio_driver.h
+        gameboy/debug_utils.h
+)
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})
 #target_link_libraries(gba_emulator /home/jc/CLionProjects/SFML/lib/libsfml-audio-ringBufferSize.a /home/jc/CLionProjects/SFML/lib/libsfml-system-ringBufferSize.a)
-
-
+#target_link_libraries(Test01 sfml-graphics sfml-audio sfml-network sfml-window sfml-system)
