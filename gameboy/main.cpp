@@ -6,24 +6,12 @@
 //#define VERBOSE
 
 #include <algorithm>
-
-#include <chrono>
 #include <iostream>
 #include <filesystem>
-#include <cstdint>
 #include <bitset>
 #include <vector>
-#include <bit>
-#include <unistd.h>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
-#include <math.h>
-#include <SFML/Audio.hpp>
-#include <queue>
-#include <array>
-#include <cassert>
-#include <fstream>
-#include <unistd.h>
 #include "audio_driver.h"
 
 #include "structs.h"
@@ -31,7 +19,6 @@
 #include "CPU.h"
 #include "Joypad.h"
 #include "Timer.h"
-#include "ShmAlloc.h"
 
 using namespace std;
 

@@ -6,6 +6,7 @@ project(shared_mem2)
 project(leetcode)
 project(chip8)
 project(audio_test)
+project(vram_viz)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -39,16 +40,15 @@ add_executable(
 add_executable(
         gba_emulator
         gameboy/main.cpp
-        gameboy/audio_driver.cpp
         gameboy/audio_driver.h
         gameboy/debug_utils.h
-        gameboy/PPU.cpp
         gameboy/PPU.h
         gameboy/structs.h
-        gameboy/ShmAlloc.cpp
         gameboy/ShmAlloc.h
 )
 
+add_executable(vram_viz gameboy/vram_viz.cpp)
+
+
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})
-#target_link_libraries(gba_emulator /home/jc/CLionProjects/SFML/lib/libsfml-audio-ringBufferSize.a /home/jc/CLionProjects/SFML/lib/libsfml-system-ringBufferSize.a)
-#target_link_libraries(Test01 sfml-graphics sfml-audio sfml-network sfml-window sfml-system)
+target_link_libraries(vram_viz sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})

@@ -62,7 +62,7 @@ public:
 
     PPU(const std::string &bootROM, const std::string &cartridgeROM, std::vector<sf::Uint8> &pixels, MemoryRef ram)
             : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
-              wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[0xFF47]},
+              wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[PPU::BGP_ADDR]},
               obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
               lcdStatus{*reinterpret_cast<LCDStatus *>(&vram[0xFF41])},
               vram(ram),
@@ -141,7 +141,7 @@ public:
                         if (e.xPos < x + 8 && x <= e.xPos) {
                             u8 row = !e.flags.yFlip ? y - e.yPos : spriteHeight - (y - e.yPos);
 
-                            u16 color = getTileData((e.tileNumber & (~lcdControl.objSpriteSize)) + (row >> 3),
+                            u16 color = getTileData(vram, (e.tileNumber & (~lcdControl.objSpriteSize)) + (row >> 3),
                                                     row % 8,
                                                     0x8000);
                             u8 colorShade;
@@ -163,7 +163,7 @@ public:
 
                 if (!v.empty()) {
                     auto visible = *min_element(v.begin(), v.end(), PixelComparator());
-                    drawColorToScreen(x, y, visible.color);
+                    drawColorToScreen(pixels, x, y, visible.color);
                 }
 
             }
@@ -172,45 +172,8 @@ public:
 
     }
 
-    const u8 *getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade) const {
-        const u8 *topColor;
-        int xoffs = pixelX & 7;
-        u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
-        u8 lower = (color >> (7 - xoffs)) & 1;
-        colorShade = upper * 2 + lower;
-        const u8 *outputColor = colorisePixel(reg, colorShade);
-        topColor = outputColor;
-        return topColor;
-    }
 
-    void drawColorToScreen(int pixelX, int pixelY, const u8 *col) {
-
-        int deviceX = pixelX * DEVICE_RESOLUTION_X;
-        int deviceY = pixelY * DEVICE_RESOLUTION_Y;
-        int pixelStartIx = deviceY * DEVICE_WIDTH + deviceX;
-        for (int dy = 0; dy < DEVICE_RESOLUTION_Y; ++dy) {
-            for (int dx = 0; dx < DEVICE_RESOLUTION_X; ++dx) {
-                int pixelIx = 4 * (pixelStartIx + dy * DEVICE_WIDTH + dx);
-                pixels[pixelIx] = *col;
-                pixels[pixelIx + 1] = *(col + 1);
-                pixels[pixelIx + 2] = *(col + 2);
-                pixels[pixelIx + 3] = *(col + 3);
-            }
-        }
-
-    }
-
-    const u8 pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
-                                 {0xbb, 0xbb, 0xbb, 0xff},
-                                 {0x88, 0x88, 0x88, 0xff},
-                                 {0x00, 0x00, 0x00, 0xff}};
-
-    [[nodiscard]] const u8 *colorisePixel(u8 reg, u8 pixel) const {
-        // for some regs, 00 is transparent
-        u8 pixelCode = (reg >> (2 * pixel)) & 3;
-        auto x = pixelColor[pixelCode];
-        return x;
-    }
+    [[nodiscard]] static const u8 *colorisePixel(u8 reg, u8 pixel);
 
     constexpr static u16 OAM_ADDR_START = 0xFE00;
 
@@ -221,24 +184,14 @@ public:
         copy(vram.begin() + startAddress, vram.begin() + endAddress, vram.begin() + OAM_ADDR_START);
     }
 
-
-    u16 getTileData(int tile, int row, u16 addrStart) {
-
-        int rowStride = 2;
-        u16 rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
-        u16 colorData = (((u16) vram[rowStart]) << 8) | vram[rowStart + 1];
-
-        return colorData;
-    }
-
     u16 getBackgroundTileMapDataRow(int ix, int row) {
         assert(lcdControl.bgDisplayEnabled);
         if (lcdControl.bgWindowTileDataSelect) {
             u8 tile = lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
-            return getTileData(tile, row, 0x8000);
+            return getTileData(vram, tile, row, 0x8000);
         } else {
             auto tile = static_cast<int8_t>(lcdControl.bgTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix]);
-            return getTileData(tile, row, 0x9000);
+            return getTileData(vram, tile, row, 0x9000);
         }
     }
 
@@ -246,11 +199,11 @@ public:
         assert(lcdControl.windowDispEnabled);
         if (lcdControl.bgWindowTileDataSelect) {
             u8 tile = lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 + ix];
-            return getTileData(tile, row, 0x8000);
+            return getTileData(vram, tile, row, 0x8000);
         } else {
-            auto tile = static_cast<int8_t>(lcdControl.windowTileMapDisplaySelect ? vram[0x9C00 + ix] : vram[0x9800 +
-                                                                                                             ix]);
-            return getTileData(tile, row, 0x9000);
+            auto tile = static_cast<int8_t>(lcdControl.windowTileMapDisplaySelect ?
+                                            vram[0x9C00 + ix] : vram[0x9800 + ix]);
+            return getTileData(vram, tile, row, 0x9000);
         }
     }
 
@@ -351,6 +304,68 @@ public:
     void vblankRow() {
         clock += 456;
     }
+
+    static void drawColorToScreen(std::vector<sf::Uint8> &pixels, int pixelX, int pixelY, const u8 *col);
+
+    static u16 getTileData(MemoryRef vram, int tile, int row, u16 addrStart);
+
+    static const u8 pixelColor[4][4];
+
+    static const u8 *getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade);
+
+    static const u16 BGP_ADDR = 0xFF47;
+
 };
+
+void PPU::drawColorToScreen(std::vector<sf::Uint8> &pixels, int pixelX, int pixelY, const u8 *col) {
+
+    int deviceX = pixelX * DEVICE_RESOLUTION_X;
+    int deviceY = pixelY * DEVICE_RESOLUTION_Y;
+    int pixelStartIx = deviceY * DEVICE_WIDTH + deviceX;
+    for (int dy = 0; dy < DEVICE_RESOLUTION_Y; ++dy) {
+        for (int dx = 0; dx < DEVICE_RESOLUTION_X; ++dx) {
+            int pixelIx = 4 * (pixelStartIx + dy * DEVICE_WIDTH + dx);
+            pixels[pixelIx] = *col;
+            pixels[pixelIx + 1] = *(col + 1);
+            pixels[pixelIx + 2] = *(col + 2);
+            pixels[pixelIx + 3] = *(col + 3);
+        }
+    }
+
+}
+
+u16 PPU::getTileData(MemoryRef vram, int tile, int row, u16 addrStart) {
+
+    int rowStride = 2;
+    u16 rowStart = addrStart + tile * (rowStride * 8) + row * rowStride;
+    u16 colorData = (((u16) vram[rowStart]) << 8) | vram[rowStart + 1];
+
+    return colorData;
+}
+
+const u8 PPU::pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
+                                  {0xbb, 0xbb, 0xbb, 0xff},
+                                  {0x88, 0x88, 0x88, 0xff},
+                                  {0x00, 0x00, 0x00, 0xff}};
+
+
+[[nodiscard]] const u8 *PPU::colorisePixel(u8 reg, u8 pixel) {
+// for some regs, 00 is transparent
+    u8 pixelCode = (reg >> (2 * pixel)) & 3;
+    auto x = pixelColor[pixelCode];
+    return x;
+}
+
+
+const u8 *PPU::getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade) {
+    const u8 *topColor;
+    int xoffs = pixelX & 7;
+    u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;
+    u8 lower = (color >> (7 - xoffs)) & 1;
+    colorShade = upper * 2 + lower;
+    const u8 *outputColor = colorisePixel(reg, colorShade);
+    topColor = outputColor;
+    return topColor;
+}
 
 #endif //GBA_EMULATOR_PPU_H
