@@ -38,12 +38,14 @@ find_package(Boost 1.78.0 COMPONENTS program_options REQUIRED)
 #)
 
 add_executable(
-        gba_emulator #main.cpp
+        gba_emulator
         gameboy/main.cpp
         gameboy/audio_driver.cpp
         gameboy/audio_driver.h
         gameboy/debug_utils.h
-        gameboy/main.cpp
+        gameboy/PPU.cpp
+        gameboy/PPU.h
+        gameboy/structs.h
 )
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})
