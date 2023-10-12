@@ -310,6 +310,46 @@ The two lower STAT bits show the current status of the LCD controller.
                         clock += 8;
                         break;
                     }
+                    case 0x27: {
+                        u8 prevA = a;
+                        a = a << 1;
+                        f.zf = a == 0;
+                        f.n = false;
+                        f.h = false;
+                        f.cy = ((prevA & 0xf) << 1) == 0x0;
+
+                        pc += 2;
+                        clock += 8;
+                        break;
+                    }
+                    case 0x7F: {
+                        pc += 2;
+                        clock += 8;
+                        f.zf = (a >> 7)&1;
+                        f.n = false;
+                        f.h = true;
+                        break;
+                    }
+                    case 0x40:
+                    case 0x50:
+                    case 0x60:
+                    case 0x70: {
+                        int shift = 2 * ((vram[pc + 1] >> 4) - 4);
+                        pc += 2;
+                        clock += 8;
+                        f.zf = (b >> shift) & 1;
+                        f.n = false;
+                        f.h = true;
+                        break;
+                    }
+                    case 0x7E: {
+                        pc += 2;
+                        clock += 16;
+                        f.zf = (vram[hl] >> 7)&1;
+                        f.n = false;
+                        f.h = true;
+                        break;
+                    }
                     default:
                         printf("CB - Opcode not implemented: [%x]", vram[pc + 1]);
                         exit(1);
@@ -963,7 +1003,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 clock += 12;
                 break;
             }
-            case 0x2a: {
+            case 0x2A: {
                 a = vram[hl++];
                 ++pc;
                 clock += 8;
@@ -1172,9 +1212,6 @@ The two lower STAT bits show the current status of the LCD controller.
                 }
                 break;
             }
-            case 0xFC: {
-                break;
-            }
             case 0x35: {
 
                 f.h = (vram[hl] & 0x0) == 0x1;
@@ -1185,6 +1222,41 @@ The two lower STAT bits show the current status of the LCD controller.
                 f.n = false;
                 break;
             }
+            case 0xC2: {
+                //  jp   f,nn      xx nn nn 16;12 ---- conditional jump if nz,z,nc,c
+                if (!f.zf) {
+                    pc = (u16(vram[pc + 2]) << 8) | vram[pc + 1];
+                    clock += 16;
+                } else {
+                    pc += 3;
+                    clock += 12;
+                }
+                break;
+            }
+            case 0x3A: {
+                a = vram[hl--];
+                ++pc;
+                clock += 8;
+                break;
+            }
+            case 0xC6: {
+                u8 prevA = a;
+                a += vram[pc + 1];
+                pc += 2;
+                clock += 8;
+                f.zf = a == 0;
+                f.n = false;
+                f.zf = (prevA & 0xF) == 0xF;
+                f.cy = prevA == 0xFF;
+                break;
+            }
+            case 0xEE: {
+                vram[hl] |= (1 << 5);
+                clock += 16;
+                pc += 2;
+                break;
+            }
+
             default: {
                 printf("Opcode not implemented: [%x]", opcode);
                 exit(1);

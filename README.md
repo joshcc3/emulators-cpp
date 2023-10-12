@@ -83,9 +83,13 @@ Some good answers here:
 https://www.reddit.com/r/EmuDev/comments/cfy60z/resources_to_build_a_gba_emulator/
 
 https://media.ccc.de/v/rustfest-rome-3-gameboy-emulator
-http://pastraiser.com/cpu/gameboy/gameboy_opcodes.html
+
+
 https://www.youtube.com/watch?v=HyzD8pNlpwI&list=PL1BolmHM1v7-kWa8JtIRMnE8wYhQjVwZS&index=17&t=0s
 
 
 
 Link to the technical sepcifictions: https://problemkaputt.de/gbatek.htm
+
+http://pastraiser.com/cpu/gameboy/gameboy_opcodes.html
+Pandoc information: https://problemkaputt.de/pandocs.htm
