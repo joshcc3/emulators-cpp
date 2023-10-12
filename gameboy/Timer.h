@@ -42,7 +42,7 @@ public:
     Timer(MemoryRef ram) : ram{ram},
                            div{ram[0xFF04]}, tima{ram[0xFF05]}, tma{ram[0xFF06]}, tac{ram[0xFF07]},
                            clock{0},
-                           ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+                           ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])} {
         tima = 0x00;
         tma = 0x00;
         tac = 0x00;
@@ -57,8 +57,15 @@ public:
             div = (clock + 4) >> 8;
         }
 
+
         clock += 4;
-        int updateFreq = 1 << (12 + 2 * (3 - ((tac & 0x3) - 1) % 4));
+        /*
+         * 0 - 12
+         * 1 - 18
+         * 2 - 16
+         * 3 - 14
+         */
+        int updateFreq = 1 << (12 + 2 * (3 - ((tac & 0x3) - 1) & 3));
         bool isInc = (clock & (updateFreq - 1)) == 0;
 
         if (tima == 0xFF && isInc) {

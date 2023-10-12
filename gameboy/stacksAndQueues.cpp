@@ -12,80 +12,67 @@
 
 using namespace std;
 
-class Solution {
+class Fancy {
+
 public:
 
-    bool bit(int n, int pos) {
-        return (n >> pos) & 1;
+    vector<long long> vals;
+    vector<long long> prods;
+    vector<long long> sums;
+    constexpr static long long mod = 1e9 + 7;
+
+    Fancy() {
+        sums.push_back(0);
+        prods.push_back(1);
     }
 
-    bool test(int i, const string& s, const vector<int>& parenPos, string& res) {
-        int pc = 0;
-        int open = 0;
-        int chars = 0;
-        for(int j = 0; j < s.size(); j++) {
-            while(pc < parenPos.size() && parenPos[pc] < j) {
-                ++pc;
-            }
-            while(bit(i, j) && pc < parenPos.size() && j < s.size() && parenPos[pc] == j) {
-                ++j;
-                ++pc;
-            }
-            if(s[j] == '(') {
-                ++open;
-            } else if(s[j] == ')') {
-                --open;
-            }
-            if(open < 0) {
-                return false;
-            }
-            res[chars++] = s[j];
-        }
-        if(open != 0) {
-            return false;
-        }
-
-        res.resize(chars);
-        return true;
+    void append(int val) {
+        vals.push_back(val);
+        *sums.rbegin() = (*sums.rbegin() * *prods.rbegin()) % mod;
+        sums.push_back(*sums.rbegin());
+        prods.push_back((*prods.rbegin()));
     }
 
+    void addAll(int inc) {
+        *sums.rbegin() = ((*sums.rbegin() * *prods.rbegin())%mod + inc) % mod;
+    }
 
+    void multAll(int m) {
+        *prods.rbegin() = (*prods.rbegin() * m) % mod;
+    }
 
-    vector<string> removeInvalidParentheses(string s) {
-        vector<int> parenPos;
-        for(int i = 0; i < s.size(); ++i) {
-            if(s[i] == '(' || s[i] == ')') {
-                parenPos.push_back(i);
-            }
+    long long findInverse(long long x, long long y) {
+        long long z = 1;
+        while (x % y != 0) {
+            z += (mod - y) / y + 2;
+            y = y - (mod - y) % y;
         }
-        string res;
-        if(test(0, s, parenPos, res)) {
-            cout << "0" << endl;
-            return {s};
-        }
-        vector<int> poss;
-        for(int i = 0; i < (1 << parenPos.size()); ++i) {
-            poss.push_back(i);
-        }
+        return z + x / y - 1;
 
-        auto comparator = [](int a, int b) { return __builtin_popcount(a) < __builtin_popcount(b); };
-        sort(poss.begin(), poss.end(), comparator);
-        int mn = -1;
-        set<string> sols;
-        for(int i = 0; i < poss.size(); ++i) {
-            string res(s.size(), 0);
-            if(mn != -1 && __builtin_popcount(poss[i]) > mn) {
-                break;
-            } else if(test(i, s, parenPos, res)) {
-                cout << bitset<25>(poss[i]) << " - y - " << res << endl;
-                mn = __builtin_popcount(poss[i]);
-                sols.insert(res);
-            } else {
-                cout << bitset<25>(poss[i]) << " - n - " << res << endl;
-            }
-        }
+    }
 
-        return vector<string>(sols.begin(), sols.end());
-
+    int getIndex(int idx) {
+        long long prod = findInverse(*prods.rbegin(), prods[idx]);
+        long long inc = (*sums.rbegin() < sums[idx]) ? 1e9 + 7 : 0;
+        long long sum = (((inc + *sums.rbegin()) - sums[idx])*prod) % mod;
+        return ((prod * vals[idx]) % mod + sum) % mod;
     }
 };
+
+int main() {
+    Fancy f;
+    int vals_[] = {2, 3, 7, 2, 0, 3, 10, 2, 0, 1, 2};
+    int *vals = vals_;
+    f.append(2);
+    f.addAll(3);
+    f.append(7);
+    f.multAll(2);
+    cout << f.getIndex(0) << endl;
+    f.addAll(3);
+    f.append(10);
+    f.multAll(2);
+    cout << f.getIndex(0) << endl;
+    cout << f.getIndex(1) << endl;
+    cout << f.getIndex(2) << endl;
+
+}

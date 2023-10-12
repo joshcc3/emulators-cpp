@@ -44,11 +44,17 @@ public:
     std::set<Scancode> interestKeys;
     std::map<Scancode, JoypadBit> keyMap;
 
+    u8 dirPressed;
+    u8 buttonsPressed;
+
     Joypad(MemoryRef ram) : ram{ram}, jReg{ram[0xFF00]},
-                            ifReg{*reinterpret_cast<InterruptFlag *>(ram[0xFF0F])} {
+                            ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])}, dirPressed{0xf}, buttonsPressed{0xf} {
         std::vector<Scancode> events = {Scancode::A, Scancode::B, Scancode::P, Scancode::L, Scancode::Left,
                                         Scancode::Right,
                                         Scancode::Up, Scancode::Down};
+
+        jReg = 0;
+
         for (auto e: events) {
             interestKeys.insert(e);
         }
@@ -65,20 +71,37 @@ public:
 
     }
 
+    void refresh() {
+        if(((jReg >> 4) & 1) == 0) {
+            jReg = (jReg | 0x0f) & (0xf0 | dirPressed);
+        } else if(((jReg >> 5) & 1) == 0) {
+            jReg = (jReg | 0x0f) & (0xf0 | buttonsPressed);
+        } else {
+            jReg |= 0x0f;
+        }
+    }
+
     void processKeyEvents(const std::vector<sf::Event> &events) {
         for (auto event: events) {
             if ((event.type == KEYPRESS || event.type == KEYRELEASED) &&
                 interestKeys.find(event.key.scancode) != interestKeys.end()) {
                 auto key = keyMap[event.key.scancode];
                 if (event.type & sf::Event::KeyPressed) {
-                    jReg = jReg | (1 << key.column) | (1 << key.row);
+                    if(key.column == 4) {
+                        dirPressed &= ~(1 << key.row);
+                    } else {
+                        buttonsPressed &= ~(1 << key.row);
+                    }
                 } else {
-                    jReg = jReg & ~(1 << key.column | 1 << key.row);
+                    if(key.column == 4) {
+                        dirPressed |= (1 << key.row);
+                    } else {
+                        buttonsPressed |= (1 << key.row);
+                    }
                 }
                 ifReg.joypad = true;
             }
         }
-
     }
 
 };

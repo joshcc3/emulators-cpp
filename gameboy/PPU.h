@@ -33,8 +33,8 @@ public:
     constexpr static int PIXEL_COLUMNS = 160;
     constexpr static int PIXEL_ROWS = 144;
 
-    constexpr static int DEVICE_RESOLUTION_X = 3;
-    constexpr static int DEVICE_RESOLUTION_Y = 3;
+    constexpr static int DEVICE_RESOLUTION_X = 5;
+    constexpr static int DEVICE_RESOLUTION_Y = 5;
 
     constexpr static int DEVICE_WIDTH = PIXEL_COLUMNS * DEVICE_RESOLUTION_X;
     constexpr static int DEVICE_HEIGHT = PIXEL_ROWS * DEVICE_RESOLUTION_Y;

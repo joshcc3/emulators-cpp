@@ -5,6 +5,8 @@ excited
 looking for
 
 
+Pandoc information: https://problemkaputt.de/pandocs.htm
+
 market making, dma, trader management,
 
 
@@ -95,3 +97,175 @@ custom app that visualizes the vram, visualizes the tile map
 
 
 notes on allocators :  https://blog.csdn.net/arduousbonze/article/details/3624177
+
+
+----
+
+reason why this isn't working:
+
+
+
+Call_000_02f8 - contains the routine end of which 27d7 which is the tile copying routine.
+
+
+0x4a1b - location of tile data
+
+waits for vblank and then:
+jr_000_0233:
+    ldh a, [rLY]
+    cp $94
+    jr nz, jr_000_0233
+
+    ld a, $03
+    ldh [rLCDC], a
+    ld a, $e4
+    ldh [rBGP], a
+    ldh [rOBP0], a
+    ld a, $c4
+    ldh [rOBP1], a
+
+then it sets the stack to cffff and hl to dfff
+it zeros out the top 256 bytes in dfff and then it 0s out the top 4KB of the stack.
+
+
+then it zeros out the entire of vram and the tile map:
+Call_000_0272:
+    ld hl, $9fff
+    ld c, $20
+    xor a
+    ld b, $00
+
+jr_000_027a:
+    ld [hl-], a
+    dec b
+    jr nz, jr_000_027a
+
+    dec c
+    jr nz, jr_000_027a
+
+    ld hl, $feff
+    ld b, $00
+
+
+zeros out the oam data at FE00 - FEFF
+then it zeros out the register data from FFFE - FF7E
+
+HRAM copying routine:
+    ld c, $b6
+    ld b, $0c
+    ld hl, $2a7f
+
+jr_000_029a:
+    ld a, [hl+]
+    ld [c], a
+    inc c
+    dec b
+    jr nz, jr_000_029a
+
+Call_000_29a6:
+joypad stuff - writes to the joypad registers.
+location ff80 in hram is for joypad data.
+
+zeros out the data to the background tile map - setting everything to tile 47 which is blank
+ld hl 0x9bff
+Call_000_2798:
+    ld bc, $0400
+
+jr_000_279b:
+    ld a, $2f
+    ld [hl-], a
+    dec bc
+    ld a, b
+    or c
+    jr nz, jr_000_279b
+
+    ret
+
+
+background map copying routine
+Call_000_27c3:
+    ld hl, $415f
+    ld bc, $0138
+    ld de, $8000
+
+jr_000_27cc:
+    ld a, [hl+]
+    ld [de], a
+    inc de
+    ld [de], a
+    inc de
+    dec bc
+    ld a, b
+    or c
+    jr nz, jr_000_27cc
+
+    ret
+
+
+
+4a07 is where the tile data lives
+Call_000_27f0 -
+
+
+
+why does it check the ly at 47
+
+Controlling sound data I suspect:
+jr_001_64fa - makes a bunch of calls:
+
+values updated
+    ld [$dfe0], a
+    ld [$dfe8], a
+    ld [$dff0], a
+    ld [$dff8], a
+    ld [$df7f], a
+
+dfe9
+
+Resets the sound data
+
+Jump_001_69a5:
+    xor a
+    ld [$dfe1], a
+    ld [$dfe9], a
+    ld [$dff1], a
+    ld [$dff9], a
+    ld [$df9f], a
+    ld [$dfaf], a
+    ld [$dfbf], a
+    ld [$dfcf], a
+    ld a, $ff
+    ldh [rNR51], a
+    ld a, $03
+    ld [$df78], a
+
+Call_001_69c7:
+    ld a, $08
+    ldh [rNR12], a
+    ldh [rNR22], a
+    ldh [rNR42], a
+    ld a, $80
+    ldh [rNR14], a
+    ldh [rNR24], a
+    ldh [rNR44], a
+    xor a
+    ldh [rNR10], a
+    ldh [rNR30], a
+    ret
+
+
+---------------
+
+
+0000-3FFF   16KB ROM Bank 00     (in cartridge, fixed at bank 00)
+4000-7FFF   16KB ROM Bank 01..NN (in cartridge, switchable bank number)
+8000-9FFF   8KB Video RAM (VRAM) (switchable bank 0-1 in CGB Mode)
+A000-BFFF   8KB External RAM     (in cartridge, switchable bank, if any)
+C000-CFFF   4KB Work RAM Bank 0 (WRAM)
+D000-DFFF   4KB Work RAM Bank 1 (WRAM)  (switchable bank 1-7 in CGB Mode)
+E000-FDFF   Same as C000-DDFF (ECHO)    (typically not used)
+FE00-FE9F   Sprite Attribute Table (OAM)
+FEA0-FEFF   Not Usable
+FF00-FF7F   I/O Ports
+FF80-FFFE   High RAM (HRAM)
+FFFF        Interrupt Enable Register

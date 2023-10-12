@@ -28,6 +28,33 @@
 
 class CPU {
 public:
+
+    /*
+     *
+0000-3FFF   16KB ROM Bank 00     (in cartridge, fixed at bank 00)
+4000-7FFF   16KB ROM Bank 01..NN (in cartridge, switchable bank number)
+8000-9FFF   8KB Video RAM (VRAM) (switchable bank 0-1 in CGB Mode)
+A000-BFFF   8KB External RAM     (in cartridge, switchable bank, if any)
+C000-CFFF   4KB Work RAM Bank 0 (WRAM)
+D000-DFFF   4KB Work RAM Bank 1 (WRAM)  (switchable bank 1-7 in CGB Mode)
+E000-FDFF   Same as C000-DDFF (ECHO)    (typically not used)
+FE00-FE9F   Sprite Attribute Table (OAM)
+FEA0-FEFF   Not Usable
+FF00-FF7F   I/O Ports
+FF80-FFFE   High RAM (HRAM)
+FFFF        Interrupt Enable Register
+
+
+     LCD & PPU enable: 0 = Off; 1 = On
+Window tile map area: 0 = 9800–9BFF; 1 = 9C00–9FFF
+Window enable: 0 = Off; 1 = On
+BG & Window tile data area: 0 = 8800–97FF; 1 = 8000–8FFF
+BG tile map area: 0 = 9800–9BFF; 1 = 9C00–9FFF
+OBJ size: 0 = 8×8; 1 = 8×16
+OBJ enable: 0 = Off; 1 = On
+BG & Window enable / priority [Different meaning in CGB Mode]: 0 = Off; 1 = On
+
+     */
     u8 registers[8];
     u8 &a = registers[1];
     FlagReg &f = (FlagReg &) registers[0];
@@ -82,13 +109,42 @@ public:
 
     void processInterrupts() {
         if (ime) {
-            ime = false;
             // if reset
             u16 jumpAddr = 0x0;
             if (ifReg.vBlank && ieReg.vBlank) {
                 ifReg.vBlank = false;
                 jumpAddr = 0x40;
             } else if (ifReg.lcdStat && ieReg.lcdStat) {
+                /*
+                 *
+                 *   Bit 5 - Mode 2 OAM Interrupt         (1=Enable) (Read/Write)
+  Bit 4 - Mode 1 V-Blank Interrupt     (1=Enable) (Read/Write)
+  Bit 3 - Mode 0 H-Blank Interrupt     (1=Enable) (Read/Write)
+  Bit 2 - Coincidence Flag  (0:LYC<>LY, 1:LYC=LY) (Read Only)
+  Bit 1-0 - Mode Flag       (Mode 0-3, see below) (Read Only)
+            0: During H-Blank
+            1: During V-Blank
+            2: During Searching OAM-RAM
+            3: During Transfering Data to LCD Driver
+
+The two lower STAT bits show the current status of the LCD controller.
+  Mode 0: The LCD controller is in the H-Blank period and
+          the CPU can access both the display RAM (8000h-9FFFh)
+          and OAM (FE00h-FE9Fh)
+
+  Mode 1: The LCD contoller is in the V-Blank period (or the
+          display is disabled) and the CPU can access both the
+          display RAM (8000h-9FFFh) and OAM (FE00h-FE9Fh)
+
+  Mode 2: The LCD controller is reading from OAM memory.
+          The CPU <cannot> access OAM memory (FE00h-FE9Fh)
+          during this period.
+
+  Mode 3: The LCD controller is reading from both OAM and VRAM,
+          The CPU <cannot> access OAM and VRAM during this period.
+          CGB Mode: Cannot access Palette Data (FF69,FF6B) either.
+
+                 */
                 ifReg.lcdStat = false;
                 jumpAddr = 0x48;
             } else if (ifReg.timer && ieReg.timer) {
@@ -103,9 +159,13 @@ public:
             }
 
             if (jumpAddr) {
+                ime = false;
                 vram[--sp] = pc >> 8;
                 vram[--sp] = pc & 0xff;
                 pc = jumpAddr;
+                clock += 20;
+            } else {
+                clock += 4;
             }
         }
     }
@@ -1113,6 +1173,16 @@ public:
                 break;
             }
             case 0xFC: {
+                break;
+            }
+            case 0x35: {
+
+                f.h = (vram[hl] & 0x0) == 0x1;
+                u8 updatedVal = --(vram[hl]);
+                ++pc;
+                clock += 12;
+                f.zf = updatedVal == 0;
+                f.n = false;
                 break;
             }
             default: {

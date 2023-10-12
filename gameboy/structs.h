@@ -63,6 +63,7 @@ struct LCDStatus {
     bool oamInterrupt: 1;
     bool coincidenceInterrupt: 1;
     bool unused: 1;
+
 };
 
 struct FlagReg {

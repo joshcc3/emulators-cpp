@@ -48,63 +48,54 @@ public:
         auto p1 = chrono::high_resolution_clock::now();
         uint64_t startingClock[3] = {ppu.clock, cpu.clock, ad.clock};
 #endif
-        runDevices(es);
-        es.clear();
+        jp.processKeyEvents(es);
+        runDevices();
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
             uint64_t startClock = ppu.clock;
             ppu.ly = i;
             ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
 
-            if (ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt) {
-                ifReg.lcdStat = true;
-                runDevices(es);
-            } else {
-                ifReg.lcdStat = false;
-            }
+            ifReg.lcdStat = ppu.lcdStatus.coincidenceFlag && ppu.lcdStatus.coincidenceInterrupt;
 
             // all following clockx %x %x cycles in 4MHz
             // should take 1/60th of a second at 1Mhz
             // must update lcdc status, and trigger interrupts
 
             ppu.lcdStatus.modeFlag = 2;
-            if (ppu.lcdStatus.oamInterrupt) {
-                ppu.oamInterrupt();
-            }
-
+            cpu.ifReg.lcdStat = ppu.lcdStatus.oamInterrupt;
             ppu.oamSearch();
-            runDevices(es);
+            runDevices();
 
             ppu.lcdStatus.modeFlag = 3;
             ppu.pixelTransfer(i);
-            runDevices(es);
-            ppu.lcdStatus.modeFlag = 0;
-            if (ppu.lcdStatus.hblankInterrupt) {
-                ppu.hblankInterrupt();
-            }
-            ppu.hBlank();
-            runDevices(es);
+            runDevices();
 
+            ppu.lcdStatus.modeFlag = 0;
+            cpu.ifReg.lcdStat = ppu.lcdStatus.hblankInterrupt;
+            ppu.hBlank();
+            runDevices();
 #ifndef DEBUG
-            //            usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+
+        // usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+
 #endif
         }
+
         ppu.lcdStatus.modeFlag = 1;
-        if (ppu.lcdStatus.vblankInterrupt) {
-            ifReg.vBlank = true;
-            runDevices(es);
-        }
+        cpu.ifReg.vBlank = true;
+        cpu.ifReg.lcdStat = ppu.lcdStatus.vblankInterrupt;
 
         for (int i = 0; i < 10; ++i) {
             ppu.vblankRow();
             ppu.ly = ppu.PIXEL_ROWS + i;
-            runDevices(es);
+            runDevices();
         }
         ifReg.vBlank = false;
 
         if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
             cpu.clock = cpu.clock & ((1 << 22) - 1);
             ppu.clock = ppu.clock & ((1 << 22) - 1);
-            ad.clock = (ad.clock) & ((1 << 22) - 1);
+             ad.clock = (ad.clock) & ((1 << 22) - 1);
         }
 
 #ifdef VERBOSE
@@ -115,8 +106,11 @@ public:
 
     }
 
-    void runDevices(vector<sf::Event> &es) {
+    void runDevices() {
+
         while (cpu.clock <= ppu.clock || ad.clock <= ppu.clock) {
+            jp.refresh();
+
             if (timer.clock <= ppu.clock) {
                 timer.run();
             }
@@ -130,9 +124,6 @@ public:
             if (ppu.dma != 0) {
                 ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
                 ppu.dma = 0;
-            }
-            if (!es.empty()) {
-                jp.processKeyEvents(es);
             }
         }
     }
@@ -188,7 +179,7 @@ int main() {
 
     while (w.isOpen()) {
         sf::Event e{};
-
+        events.clear();
         while (w.pollEvent(e)) {
             if (e.type == sf::Event::EventType::Closed) {
                 w.close();
