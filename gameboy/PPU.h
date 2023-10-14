@@ -61,14 +61,14 @@ public:
     uint64_t clock;
 
     PPU(std::vector<sf::Uint8> &pixels, MemoryRef ram)
-            : pixels{pixels}, scx{MUT8(vram[0xFF43])}, scy{MUT8(vram[0xFF42])}, ly{MUT8(vram[0xFF44])},
-              lyc{MUT8(vram[0xFF45])},
-              wx{MUT8(vram[0xFF4B])}, wy{MUT8(vram[0xFF4A])}, dma{MUT8(vram[0xFF46])}, bgp{MUT8(vram[PPU::BGP_ADDR])},
-              obp0{MUT8(vram[0xFF48])}, obp1{MUT8(vram[0xFF49])},
-              lcdControl{*reinterpret_cast<LCDControl *>(&MUT8(vram[0xFF40]))},
-              lcdStatus{*reinterpret_cast<LCDStatus *>(&MUT8(vram[0xFF41]))},
+            : pixels{pixels}, scx{MUT(vram)[0xFF43]}, scy{MUT(vram)[0xFF42]}, ly{MUT(vram)[0xFF44]},
+              lyc{MUT(vram)[0xFF45]},
+              wx{MUT(vram)[0xFF4B]}, wy{MUT(vram)[0xFF4A]}, dma{MUT(vram)[0xFF46]}, bgp{MUT(vram)[PPU::BGP_ADDR]},
+              obp0{MUT(vram)[0xFF48]}, obp1{MUT(vram)[0xFF49]},
+              lcdControl{*reinterpret_cast<LCDControl *>(&MUT(vram)[0xFF40])},
+              lcdStatus{*reinterpret_cast<LCDStatus *>(&MUT(vram)[0xFF41])},
               vram(ram),
-              oamEntries{reinterpret_cast<OAMEntry *>(&MUT8(vram[OAM_ADDR_START]))},
+              oamEntries{reinterpret_cast<OAMEntry *>(&MUT(vram)[OAM_ADDR_START])},
               clock{0} {
         debugInitializeCartridgeHeader();
     }
@@ -181,7 +181,7 @@ public:
         const u8 &st = vram[startAddress];
         const u8 &end = vram[endAddress];
 
-        u8 *st2 = &MUT8(vram[OAM_ADDR_START]);
+        u8 *st2 = &MUT(vram)[OAM_ADDR_START];
         std::copy(&st, &end, st2);
     }
 

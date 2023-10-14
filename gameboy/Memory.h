@@ -164,8 +164,6 @@ public:
 };
 
 using MBC = const _MBC;
-#define MUT8(a) const_cast<u8 &>(a)
-#define MUT16(a) const_cast<u16 &>(a)
 #define MUT(a) const_cast<_MBC&>(a)
 
 #endif //VRAM_VIZ_MEMORY_H

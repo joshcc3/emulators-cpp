@@ -47,8 +47,8 @@ public:
     u8 dirPressed;
     u8 buttonsPressed;
 
-    Joypad(MemoryRef ram) : ram{ram}, jReg{MUT8(ram[0xFF00])},
-                            ifReg{*reinterpret_cast<InterruptFlag *>(&MUT8(ram[0xFF0F]))}, dirPressed{0xf}, buttonsPressed{0xf} {
+    Joypad(MemoryRef ram) : ram{ram}, jReg{MUT(ram)[0xFF00]},
+                            ifReg{*reinterpret_cast<InterruptFlag *>(&MUT(ram)[0xFF0F])}, dirPressed{0xf}, buttonsPressed{0xf} {
         std::vector<Scancode> events = {Scancode::A, Scancode::B, Scancode::P, Scancode::L, Scancode::Left,
                                         Scancode::Right,
                                         Scancode::Up, Scancode::Down};

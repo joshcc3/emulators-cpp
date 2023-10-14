@@ -36,7 +36,7 @@ public:
 
     gb_emu(vector<u8> &pixels, MemoryRef ram) :
             ram{ram}, ppu{pixels, ram}, cpu{ram},
-            ad{MUT(ram)}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&MUT8(ram[0xFF0F]))},
+            ad{MUT(ram)}, timer{MUT(ram)}, ifReg{*reinterpret_cast<InterruptFlag *>(&MUT(ram)[0xFF0F])},
             jp{ram} {}
 
     void run(vector<sf::Event> &es) {
