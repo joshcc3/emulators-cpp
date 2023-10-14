@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include "structs.h"
+
 #define AUDIO_NOT_WORKING
 //#define DEBUG
 
@@ -274,8 +275,6 @@ struct SoundOnOff {
 class AudioDriver {
 public:
 
-    MemoryRef vram;
-
     constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 100;
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
@@ -309,8 +308,8 @@ public:
 
     snd_pcm_t *handle;
 
-    AudioDriver(MemoryRef vram)
-            : vram{vram}, ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
+    AudioDriver(_MBC& vram)
+            : ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
               paReg{*reinterpret_cast<PulseA *>(&vram[0xFF10])},
               pbReg{*reinterpret_cast<PulseB *>(&vram[0xFF16])},
               wvReg{*reinterpret_cast<Wave *>(&vram[0xFF1B])},

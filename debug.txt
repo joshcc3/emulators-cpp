@@ -95,7 +95,9 @@ ppu from shared memory
 custom app that visualizes the vram, visualizes the tile map
 
 
+
 notes on allocators :  https://blog.csdn.net/arduousbonze/article/details/3624177
+
 
 
 ----
@@ -204,6 +206,54 @@ jr_000_27cc:
 
 4a07 is where the tile data lives
 Call_000_27f0 -
+
+a98 -
+loops for 250 iterations in a loop of 3 instructions around 5000 loops
+
+
+does something with the joypad
+Jump_000_02c4:
+    call Call_000_29a6
+    call Call_000_02f8
+    call $7ff0
+    ldh a, [$80]
+    and $0f
+    cp $0f
+    jp z, Jump_000_021b
+
+vblank interrupt
+jr_000_0199:
+    call Call_000_21e0
+    call Call_000_23cc
+    call Call_000_23b7
+    call Call_000_239e
+    call Call_000_238c
+    call Call_000_237d
+    call Call_000_236e
+    call Call_000_235f
+    call Call_000_2350
+    call Call_000_2341
+    call Call_000_2332
+    call Call_000_2323
+    call Call_000_22f8
+    call Call_000_22e9
+    call Call_000_22da
+    call Call_000_22cb
+    call Call_000_22bc
+    call Call_000_22ad
+    call Call_000_229e
+    call Call_000_1ed7
+    call $ffb6
+    call Call_000_18ca
+
+called at the end of the vblank interrupt
+0xffb6 - location of the oam copying routine
+
+
+
+
+
+-------------------
 
 
 

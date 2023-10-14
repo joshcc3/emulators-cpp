@@ -60,20 +60,17 @@ public:
 
     uint64_t clock;
 
-    PPU(const std::string &bootROM, const std::string &cartridgeROM, std::vector<sf::Uint8> &pixels, MemoryRef ram)
-            : pixels{pixels}, scx{vram[0xFF43]}, scy{vram[0xFF42]}, ly{vram[0xFF44]}, lyc{vram[0xFF45]},
-              wx{vram[0xFF4B]}, wy{vram[0xFF4A]}, dma{vram[0xFF46]}, bgp{vram[PPU::BGP_ADDR]},
-              obp0{vram[0xFF48]}, obp1{vram[0xFF49]}, lcdControl{*reinterpret_cast<LCDControl *>(&vram[0xFF40])},
-              lcdStatus{*reinterpret_cast<LCDStatus *>(&vram[0xFF41])},
+    PPU(std::vector<sf::Uint8> &pixels, MemoryRef ram)
+            : pixels{pixels}, scx{MUT8(vram[0xFF43])}, scy{MUT8(vram[0xFF42])}, ly{MUT8(vram[0xFF44])},
+              lyc{MUT8(vram[0xFF45])},
+              wx{MUT8(vram[0xFF4B])}, wy{MUT8(vram[0xFF4A])}, dma{MUT8(vram[0xFF46])}, bgp{MUT8(vram[PPU::BGP_ADDR])},
+              obp0{MUT8(vram[0xFF48])}, obp1{MUT8(vram[0xFF49])},
+              lcdControl{*reinterpret_cast<LCDControl *>(&MUT8(vram[0xFF40]))},
+              lcdStatus{*reinterpret_cast<LCDStatus *>(&MUT8(vram[0xFF41]))},
               vram(ram),
-              oamEntries{reinterpret_cast<OAMEntry *>(&vram[OAM_ADDR_START])},
+              oamEntries{reinterpret_cast<OAMEntry *>(&MUT8(vram[OAM_ADDR_START]))},
               clock{0} {
-
         debugInitializeCartridgeHeader();
-        std::ifstream input(cartridgeROM, std::ios::binary);
-        std::copy(std::istreambuf_iterator(input), {}, vram.begin());
-//        std::ifstream input2(bootROM, std::ios::binary);
-//        std::copy(std::istreambuf_iterator(input2), {}, vram.begin());
     }
 
 
@@ -178,10 +175,14 @@ public:
     constexpr static u16 OAM_ADDR_START = 0xFE00;
 
     void dmaTransfer() {
-        // make sure code is executin gin hram and copying data only from HRAM.
+        // Make sure code is executing in hram and copying data only from HRAM.
         u16 startAddress = (u16) dma << 8;
         u16 endAddress = startAddress | 0xa0;
-        copy(vram.begin() + startAddress, vram.begin() + endAddress, vram.begin() + OAM_ADDR_START);
+        const u8 &st = vram[startAddress];
+        const u8 &end = vram[endAddress];
+
+        u8 *st2 = &MUT8(vram[OAM_ADDR_START]);
+        std::copy(&st, &end, st2);
     }
 
     u16 getBackgroundTileMapDataRow(int ix, int row) {
@@ -205,20 +206,6 @@ public:
                                             vram[0x9C00 + ix] : vram[0x9800 + ix]);
             return getTileData(vram, tile, row, 0x9000);
         }
-    }
-
-    void verticalTiming() {
-
-        // oam search (20 clock), pixel search (43 clock), h-blank (51 clock), v-blank
-
-        // oam search:, visible sprites,
-        // DAM - copy 160clocks
-        // send pixel to lcd every clock cycles:
-
-        // fetch - background tile, data 0, data 1
-        // to scroll, discard pixels
-        //
-
     }
 
     void debugInitializeCartridgeHeader() {
@@ -255,47 +242,9 @@ public:
 
     }
 
-
-    [[nodiscard]] bool isPixelTransfer() const noexcept {
-        return lcdStatus.modeFlag == 3;
-    }
-
-    [[nodiscard]] bool isHblank() const noexcept {
-        return lcdStatus.modeFlag == 0;
-    }
-
-    [[nodiscard]] bool isVblank() const noexcept {
-        return lcdStatus.modeFlag == 1;
-    }
-
-    bool vramAccessLegal() const {
-        return !isPixelTransfer();
-    }
-
-    bool oamAccessLegal() const {
-        return isHblank() || isVblank();
-    }
-
-    void oamInterrupt() {
-        throw "Not implemeneted";
-    }
-
-    void coincidenceInterruptt() {
-        throw "Not implemented";
-    }
-
     void oamSearch() {
         clock += 80;
     }
-
-    void hblankInterrupt() {
-        throw "Not implemented";
-    }
-
-    void vBlankInterrupt() {
-        throw "Not implemented";
-    }
-
 
     void hBlank() {
         clock += 204;

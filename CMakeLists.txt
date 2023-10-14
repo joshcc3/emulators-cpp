@@ -7,6 +7,8 @@ project(leetcode)
 project(chip8)
 project(audio_test)
 project(vram_viz)
+project(debug_playground)
+
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -16,6 +18,12 @@ set(SFML_DIR "/home/jc/projects/cpp/SFML-2.6.0/lib/cmake/SFML")
 find_package(SFML 2.6.0 REQUIRED COMPONENTS audio network graphics window system)
 
 find_package(Boost 1.78.0 COMPONENTS program_options REQUIRED)
+
+add_executable(
+        debug_playground
+        debug_code.cpp
+        debug_code.h
+)
 
 add_executable(
         shared_mem1
@@ -45,7 +53,11 @@ add_executable(
         gameboy/PPU.h
         gameboy/structs.h
         gameboy/ShmAlloc.h
+        gameboy/Memory.cpp
+        gameboy/Memory.h
 )
+
+
 
 add_executable(vram_viz gameboy/vram_viz.cpp)
 

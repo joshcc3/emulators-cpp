@@ -65,7 +65,7 @@ int main() {
 
         ++instructionCount;
         if(instructionCount % (INSTRUCTIONS_PER_SECOND/60) == 0) {
-            usleep(1000000/60);
+//            usleep(1000000/60);
             emu.updateTimers();
         }
 

@@ -34,12 +34,10 @@ public:
     Joypad jp;
     InterruptFlag &ifReg;
 
-    gb_emu(const string &bootROM, const string &cartridgeROM, vector<u8> &pixels, MemoryRef ram) :
-            ram{ram}, ppu{bootROM, cartridgeROM, pixels, ram}, cpu{ram},
-            ad{ram}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])},
-            jp{ram} {
-
-    }
+    gb_emu(vector<u8> &pixels, MemoryRef ram) :
+            ram{ram}, ppu{pixels, ram}, cpu{ram},
+            ad{MUT(ram)}, timer{ram}, ifReg{*reinterpret_cast<InterruptFlag *>(&MUT8(ram[0xFF0F]))},
+            jp{ram} {}
 
     void run(vector<sf::Event> &es) {
 
@@ -76,7 +74,7 @@ public:
             runDevices();
 #ifndef DEBUG
 
-        // usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
+            // usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
 
 #endif
         }
@@ -95,7 +93,7 @@ public:
         if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
             cpu.clock = cpu.clock & ((1 << 22) - 1);
             ppu.clock = ppu.clock & ((1 << 22) - 1);
-             ad.clock = (ad.clock) & ((1 << 22) - 1);
+            ad.clock = (ad.clock) & ((1 << 22) - 1);
         }
 
 #ifdef VERBOSE
@@ -116,7 +114,9 @@ public:
             }
             if (cpu.clock <= ppu.clock) {
                 cpu.processInterrupts();
+                MUT(ram).flushWrites();
                 cpu.fetchDecodeExecute();
+                MUT(ram).flushWrites();
             }
             if (ad.clock <= ppu.clock) {
                 ad.run(cpu.clock);
@@ -170,9 +170,8 @@ int main() {
     }
 
 
-    Memory ram;
-    ram.reserve(0x10000);
-    gb_emu emu{bootROM, cartridgeROM, pixels, ram};
+    MBC ram(bootROM, cartridgeROM);
+    gb_emu emu{pixels, ram};
 //    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/PokemonReg.gb", pixels};
 
     int instructionCount = 0;

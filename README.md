@@ -93,3 +93,5 @@ Link to the technical sepcifictions: https://problemkaputt.de/gbatek.htm
 
 http://pastraiser.com/cpu/gameboy/gameboy_opcodes.html
 Pandoc information: https://problemkaputt.de/pandocs.htm
+
+https://github.com/koenk/gbit/blob/master/lib/ref_cpu.c

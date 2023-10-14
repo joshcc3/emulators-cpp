@@ -82,20 +82,22 @@ BG & Window enable / priority [Different meaning in CGB Mode]: 0 = Off; 1 = On
     InterruptEnable &ieReg;
 
     CPU(MemoryRef vram) : vram{vram}, clock{0}, ime{false},
-                          ifReg{*reinterpret_cast<InterruptFlag *>(&vram[0xFF0F])},
-                          ieReg{*reinterpret_cast<InterruptEnable *>(&vram[0xFFFF])} {
+                          ifReg{*reinterpret_cast<InterruptFlag *>(&MUT8(vram[0xFF0F]))},
+                          ieReg{*reinterpret_cast<InterruptEnable *>(&MUT8(vram[0xFFFF]))} {
         initializeRegisters();
 
-        vram[0xFF40] = 0x91;
-        vram[0xFF42] = 0x00;
-        vram[0xFF43] = 0x00;
-        vram[0xFF45] = 0x00;
-        vram[0xFF47] = 0xFC;
-        vram[0xFF48] = 0xFF;
-        vram[0xFF49] = 0xFF;
-        vram[0xFF4A] = 0x00;
-        vram[0xFF4B] = 0x00;
-        vram[0xFFFF] = 0x00;
+        auto mbc = MUT(vram);
+
+        mbc[0xFF40] = 0x91;
+        mbc[0xFF42] = 0x00;
+        mbc[0xFF43] = 0x00;
+        mbc[0xFF45] = 0x00;
+        mbc[0xFF47] = 0xFC;
+        mbc[0xFF48] = 0xFF;
+        mbc[0xFF49] = 0xFF;
+        mbc[0xFF4A] = 0x00;
+        mbc[0xFF4B] = 0x00;
+        mbc[0xFFFF] = 0x00;
     }
 
     void initializeRegisters() {
@@ -160,8 +162,8 @@ The two lower STAT bits show the current status of the LCD controller.
 
             if (jumpAddr) {
                 ime = false;
-                vram[--sp] = pc >> 8;
-                vram[--sp] = pc & 0xff;
+                MUT8(vram[--sp]) = pc >> 8;
+                MUT8(vram[--sp]) = pc & 0xff;
                 pc = jumpAddr;
                 clock += 20;
             } else {
@@ -175,6 +177,21 @@ The two lower STAT bits show the current status of the LCD controller.
         static int counter = 0;
         ++counter;
         u8 r[8] = {3, 2, 5, 4, 7, 6, 255, 1};
+
+        /*
+         * call stack at time of bug:
+1a20
+2ca
+
+         */
+        // 16330221
+// 15744891
+//        if(pc >= 0x8000 && pc < 0xFF80) {
+//        if(vram[0x0] != 0xC3) {
+// 15660679
+//        if(pc == 0x1ff2) {
+//if(counter >= 15660678) {
+//        if(vram[0xFFE1] == 10) { 15655519
         u8 opcode = vram[pc];
         switch (opcode) {
             case 0x01: // ld sp 0x
@@ -202,7 +219,7 @@ The two lower STAT bits show the current status of the LCD controller.
 
             case 0x32:
                 clock += 8;
-                vram[hl--] = a;
+                MUT8(vram[hl--]) = a;
                 ++pc;
                 break;
 
@@ -222,7 +239,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 switch (vram[pc + 1]) {
                     case 0x7C:
                         clock += 4;
-                        f.zf = h >> 7;
+                        f.zf = (h >> 7) == 0;
                         f.h = true;
                         pc += 2;
                         break;
@@ -265,7 +282,7 @@ The two lower STAT bits show the current status of the LCD controller.
                         break;
                     }
                     case 0x36: {
-                        u8 &reg = vram[hl];
+                        u8 &reg = MUT8(vram[hl]);
                         reg = ((reg & 0xf) << 4) | (reg >> 4);
                         f.zf = reg == 0;
                         f.n = false;
@@ -281,7 +298,7 @@ The two lower STAT bits show the current status of the LCD controller.
                     case 0xEE:
                     case 0xFE: {
                         u8 ix = ((vram[pc + 1] >> 4) - 0xC) * 2 + 1;
-                        vram[hl] |= (1 << ix);
+                        MUT8(vram[hl]) |= (1 << ix);
                         pc += 2;
                         clock += 16;
                         break;
@@ -316,7 +333,7 @@ The two lower STAT bits show the current status of the LCD controller.
                         f.zf = a == 0;
                         f.n = false;
                         f.h = false;
-                        f.cy = ((prevA & 0xf) << 1) == 0x0;
+                        f.cy = (prevA >> 7) == 0x1;
 
                         pc += 2;
                         clock += 8;
@@ -325,7 +342,7 @@ The two lower STAT bits show the current status of the LCD controller.
                     case 0x7F: {
                         pc += 2;
                         clock += 8;
-                        f.zf = (a >> 7)&1;
+                        f.zf = ((a >> 7) & 1) == 0;
                         f.n = false;
                         f.h = true;
                         break;
@@ -337,7 +354,7 @@ The two lower STAT bits show the current status of the LCD controller.
                         int shift = 2 * ((vram[pc + 1] >> 4) - 4);
                         pc += 2;
                         clock += 8;
-                        f.zf = (b >> shift) & 1;
+                        f.zf = ((b >> shift) & 1) == 0;
                         f.n = false;
                         f.h = true;
                         break;
@@ -345,13 +362,50 @@ The two lower STAT bits show the current status of the LCD controller.
                     case 0x7E: {
                         pc += 2;
                         clock += 16;
-                        f.zf = (vram[hl] >> 7)&1;
+                        f.zf = ((vram[hl] >> 7) & 1) == 0;
+                        f.n = false;
+                        f.h = true;
+                        break;
+                    }
+                    case 0x86: {
+                        MUT8(vram[hl]) = vram[hl] & 0xFE;
+                        pc += 2;
+                        clock += 16;
+                        break;
+                    }
+                    case 0x48:
+                    case 0x58:
+                    case 0x68:
+                    case 0x78: {
+                        int shift = 2 * ((vram[pc + 1] >> 4) - 4) + 1;
+                        f.zf = ((b >> shift) & 1) == 0x0;
+                        f.n = false;
+                        f.h = true;
+                        pc += 2;
+                        clock += 8;
+                        break;
+                    }
+                    case 0x3F: {
+                        u8 prevA = a;
+                        a = a >> 1;
+                        pc += 2;
+                        clock += 8;
+                        f.zf = a == 0;
+                        f.n = false;
+                        f.h = false;
+                        f.cy = prevA & 1;
+                        break;
+                    }
+                    case 0x5F: {
+                        pc += 2;
+                        clock += 8;
+                        f.zf = ((a >> 3) & 1) == 0;
                         f.n = false;
                         f.h = true;
                         break;
                     }
                     default:
-                        printf("CB - Opcode not implemented: [%x]", vram[pc + 1]);
+                        printf("[%d] CB - Opcode not implemented: [%x]", counter, vram[pc + 1]);
                         exit(1);
                 }
                 break;
@@ -489,13 +543,13 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0xE0: {
                 clock += 12;
-                vram[0xFF00 + vram[pc + 1]] = a;
+                MUT8(vram[0xFF00 + vram[pc + 1]]) = a;
                 pc += 2;
                 break;
             }
             case 0xE2: {
                 clock += 8;
-                vram[0xFF00 + c] = a;
+                MUT8(vram[0xFF00 + c]) = a;
                 ++pc;
                 break;
             }
@@ -529,43 +583,43 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0x70: {
                 clock += 8;
-                vram[hl] = b;
+                MUT8(vram[hl]) = b;
                 ++pc;
                 break;
             }
             case 0x71: {
                 clock += 8;
-                vram[hl] = c;
+                MUT8(vram[hl]) = c;
                 ++pc;
                 break;
             }
             case 0x72: {
                 clock += 8;
-                vram[hl] = d;
+                MUT8(vram[hl]) = d;
                 ++pc;
                 break;
             }
             case 0x73: {
                 clock += 8;
-                vram[hl] = e;
+                MUT8(vram[hl]) = e;
                 ++pc;
                 break;
             }
             case 0x74: {
                 clock += 8;
-                vram[hl] = h;
+                MUT8(vram[hl]) = h;
                 ++pc;
                 break;
             }
             case 0x75: {
                 clock += 8;
-                vram[hl] = l;
+                MUT8(vram[hl]) = l;
                 ++pc;
                 break;
             }
             case 0x77: {
                 clock += 8;
-                vram[hl] = a;
+                MUT8(vram[hl]) = a;
                 ++pc;
                 break;
             }
@@ -584,8 +638,8 @@ The two lower STAT bits show the current status of the LCD controller.
             case 0xCD: {
                 clock += 24;
                 u16 jumpAddr = ((u16) (vram[pc + 2]) << 8) | (vram[pc + 1]);
-                vram[--sp] = (pc + 3) >> 8;
-                vram[--sp] = (pc + 3) & 0xff;
+                MUT8(vram[--sp]) = (pc + 3) >> 8;
+                MUT8(vram[--sp]) = (pc + 3) & 0xff;
                 pc = jumpAddr;
                 break;
             }
@@ -862,29 +916,29 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0xC5: {
                 clock += 16;
-                vram[--sp] = bc >> 8;
-                vram[--sp] = bc & 0xff;
+                MUT8(vram[--sp]) = bc >> 8;
+                MUT8(vram[--sp]) = bc & 0xff;
                 ++pc;
                 break;
             }
             case 0xD5: {
                 clock += 16;
-                vram[--sp] = de >> 8;
-                vram[--sp] = de & 0xff;
+                MUT8(vram[--sp]) = de >> 8;
+                MUT8(vram[--sp]) = de & 0xff;
                 ++pc;
                 break;
             }
             case 0xE5: {
                 clock += 16;
-                vram[--sp] = hl >> 8;
-                vram[--sp] = hl & 0xff;
+                MUT8(vram[--sp]) = hl >> 8;
+                MUT8(vram[--sp]) = hl & 0xff;
                 ++pc;
                 break;
             }
             case 0xF5: {
                 clock += 16;
-                vram[--sp] = af >> 8;
-                vram[--sp] = af & 0xff;
+                MUT8(vram[--sp]) = af >> 8;
+                MUT8(vram[--sp]) = af & 0xff;
                 ++pc;
                 break;
             }
@@ -920,7 +974,7 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0x22: {
                 clock += 8;
-                vram[hl++] = a;
+                MUT8(vram[hl++]) = a;
                 ++pc;
                 break;
             }
@@ -956,7 +1010,7 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0xEA: {
                 u16 addr = ((u16) (vram[pc + 2]) << 8) | vram[pc + 1];
-                vram[addr] = a;
+                MUT8(vram[addr]) = a;
                 pc += 3;
                 clock += 8;
                 break;
@@ -998,7 +1052,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 break;
             }
             case 0x36: {
-                vram[hl] = vram[pc + 1];
+                MUT8(vram[hl]) = vram[pc + 1];
                 pc += 2;
                 clock += 12;
                 break;
@@ -1055,7 +1109,7 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0x34: {
                 f.h = (vram[hl] & 0xf) == 0xf;
-                u8 updatedVal = ++(vram[hl]);
+                u8 updatedVal = ++MUT8(vram[hl]);
                 ++pc;
                 clock += 12;
                 f.zf = updatedVal == 0;
@@ -1115,8 +1169,8 @@ The two lower STAT bits show the current status of the LCD controller.
                 u16 jmpAddr = addrs[(opcode >> 4) - 0xC];
                 u8 msb = (pc + 1) >> 8;
                 u8 lsb = (pc + 1) & 0xFF;
-                vram[--sp] = msb;
-                vram[--sp] = lsb;
+                MUT8(vram[--sp]) = msb;
+                MUT8(vram[--sp]) = lsb;
                 pc = jmpAddr;
                 clock += 16;
                 break;
@@ -1197,7 +1251,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 break;
             }
             case 0x12: {
-                vram[de] = a;
+                MUT8(vram[de]) = a;
                 ++pc;
                 clock += 8;
                 break;
@@ -1214,8 +1268,8 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0x35: {
 
-                f.h = (vram[hl] & 0x0) == 0x1;
-                u8 updatedVal = --(vram[hl]);
+                f.h = (vram[hl] & 0xF) == 0x0;
+                u8 updatedVal = --MUT8(vram[hl]);
                 ++pc;
                 clock += 12;
                 f.zf = updatedVal == 0;
@@ -1242,23 +1296,41 @@ The two lower STAT bits show the current status of the LCD controller.
             case 0xC6: {
                 u8 prevA = a;
                 a += vram[pc + 1];
-                pc += 2;
-                clock += 8;
                 f.zf = a == 0;
                 f.n = false;
-                f.zf = (prevA & 0xF) == 0xF;
-                f.cy = prevA == 0xFF;
+                f.h = 0xF - (prevA & 0xF) > (vram[pc + 1] & 0xF);
+                f.cy = 0xFF - prevA > vram[pc + 1];
+                pc += 2;
+                clock += 8;
                 break;
             }
-            case 0xEE: {
-                vram[hl] |= (1 << 5);
-                clock += 16;
+            case 0xD6: {
+                u8 prevA = a;
+                u8 d8 = vram[pc + 1];
+                f.n = false;
+                f.h = (prevA & 0xF) > (d8 & 0xF);
+                f.cy = prevA > d8;
+                a = a - d8;
+                f.zf = a == 0;
+
                 pc += 2;
+                clock += 8;
+                break;
+            }
+            case 0x07: {
+                f.zf = false;
+                f.n = false;
+                f.h = false;
+                u8 res = (a << 1) | f.cy;
+                f.cy = (a >> 7);
+                a = res;
+                ++pc;
+                clock += 4;
                 break;
             }
 
             default: {
-                printf("Opcode not implemented: [%x]", opcode);
+                printf("[%d] Opcode not implemented: [%x]", counter, opcode);
                 exit(1);
             }
         }

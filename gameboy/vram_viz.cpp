@@ -121,8 +121,7 @@ int main() {
     sf::Sprite sprite;
     sprite.setTexture(texture);
 
-    Memory ram;
-    ram.reserve(0x10000);
+    MBC ram;
 
     vram_viz vz{pixels, ram};
 

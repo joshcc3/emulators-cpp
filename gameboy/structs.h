@@ -8,15 +8,10 @@
 #include <cstdint>
 #include <SFML/Window/Event.hpp>
 #include "ShmAlloc.h"
+#include "Memory.h"
 
 
-using u8 = uint8_t;
-using u16 = uint16_t;
-using u32 = uint32_t;
-using u64 = uint64_t;
-using Memory = std::vector<u8, ShmAlloc<u8>>;
-using MemoryRef = std::vector<u8, ShmAlloc<u8>>&;
-
+using MemoryRef = MBC&;
 
 constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
 constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;

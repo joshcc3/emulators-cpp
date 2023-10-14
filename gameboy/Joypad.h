@@ -47,8 +47,8 @@ public:
     u8 dirPressed;
     u8 buttonsPressed;
 
-    Joypad(MemoryRef ram) : ram{ram}, jReg{ram[0xFF00]},
-                            ifReg{*reinterpret_cast<InterruptFlag *>(&ram[0xFF0F])}, dirPressed{0xf}, buttonsPressed{0xf} {
+    Joypad(MemoryRef ram) : ram{ram}, jReg{MUT8(ram[0xFF00])},
+                            ifReg{*reinterpret_cast<InterruptFlag *>(&MUT8(ram[0xFF0F]))}, dirPressed{0xf}, buttonsPressed{0xf} {
         std::vector<Scancode> events = {Scancode::A, Scancode::B, Scancode::P, Scancode::L, Scancode::Left,
                                         Scancode::Right,
                                         Scancode::Up, Scancode::Down};
@@ -86,7 +86,7 @@ public:
             if ((event.type == KEYPRESS || event.type == KEYRELEASED) &&
                 interestKeys.find(event.key.scancode) != interestKeys.end()) {
                 auto key = keyMap[event.key.scancode];
-                if (event.type & sf::Event::KeyPressed) {
+                if (event.type == sf::Event::KeyPressed) {
                     if(key.column == 4) {
                         dirPressed &= ~(1 << key.row);
                     } else {
