@@ -46,6 +46,10 @@ public:
 
     }
 
+    void display() {
+
+    }
+
 
     void bgMap() {
 //        static void drawColorToScreen(std::vector<sf::Uint8> &pixels, int pixelX, int pixelY, const u8 *col);
@@ -208,6 +212,7 @@ int main() {
         w.clear(sf::Color::Black);
 
         vz.bgMap();
+        vz.display();
         texture.update(&pixels[0]);
         w.draw(sprite);
 

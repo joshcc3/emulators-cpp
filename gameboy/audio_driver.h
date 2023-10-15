@@ -521,7 +521,6 @@ public:
         u8 high = waveForm[duty][1];
         long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
         int soundLength = 1e9 / 256.0 * (64 - len) / (8 * oneClock);
-        std::cout << "TimeB " << soundLength << std::endl;
         for (int i = 0; i < soundLength; ++i) {
             finalVol = std::min(std::max(initialVol + i * 8 * oneClock / volStepCounterNs, 0LL), 100LL);
             ch2.generateGB(low * oneClock, 0);
@@ -555,7 +554,6 @@ public:
         const u8 high = waveForm[duty][1];
         const long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
         const long long soundLengthNs = 1e9/256.0 * (64 - len);
-        std::cout << "TimeA " << soundLengthNs << std::endl;
         finalFreq = initialFreq;
         long long timePassedNs = 0;
         while (timePassedNs <= soundLengthNs) {

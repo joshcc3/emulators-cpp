@@ -192,6 +192,10 @@ The two lower STAT bits show the current status of the LCD controller.
             pcs[bufferIx] = pc;
             bufferIx = (bufferIx + 1) % bufferSize;
         }
+
+        if(pc == 0x2b46) {
+
+        }
 #endif
 
         u8 opcode = vram[pc];
@@ -1036,8 +1040,8 @@ The two lower STAT bits show the current status of the LCD controller.
                 u8 result = a + data;
                 f.zf = result == 0;
                 f.n = false;
-                f.h = (0xf - (a & 0xf)) > (data & 0xf);
-                f.cy = 0xff - a > data;
+                f.h = (0xf - (a & 0xf)) < (data & 0xf);
+                f.cy = 0xff - a < data;
                 a = result;
                 ++pc;
                 break;
@@ -1237,8 +1241,8 @@ The two lower STAT bits show the current status of the LCD controller.
                 u8 result = a + data;
                 f.zf = result == 0;
                 f.n = false;
-                f.h = (0xf - (a & 0xf)) > (data & 0xf);
-                f.cy = 0xff - a > data;
+                f.h = (0xf - (a & 0xf)) < (data & 0xf);
+                f.cy = 0xff - a < data;
                 a = result;
                 ++pc;
                 break;
@@ -1327,8 +1331,8 @@ The two lower STAT bits show the current status of the LCD controller.
                 a += vram[pc + 1];
                 f.zf = a == 0;
                 f.n = false;
-                f.h = 0xF - (prevA & 0xF) > (vram[pc + 1] & 0xF);
-                f.cy = 0xFF - prevA > vram[pc + 1];
+                f.h = 0xF - (prevA & 0xF) < (vram[pc + 1] & 0xF);
+                f.cy = 0xFF - prevA < vram[pc + 1];
                 pc += 2;
                 clock += 8;
                 break;
@@ -1336,9 +1340,9 @@ The two lower STAT bits show the current status of the LCD controller.
             case 0xD6: {
                 u8 prevA = a;
                 u8 d8 = vram[pc + 1];
-                f.n = false;
-                f.h = (prevA & 0xF) > (d8 & 0xF);
-                f.cy = prevA > d8;
+                f.n = true;
+                f.h = (prevA & 0xF) < (d8 & 0xF);
+                f.cy = prevA < d8;
                 a = a - d8;
                 f.zf = a == 0;
 
@@ -1350,7 +1354,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 f.zf = false;
                 f.n = false;
                 f.h = false;
-                u8 res = (a << 1) | f.cy;
+                u8 res = (a << 1) | (a >> 7);
                 f.cy = (a >> 7);
                 a = res;
                 ++pc;
@@ -1360,11 +1364,11 @@ The two lower STAT bits show the current status of the LCD controller.
 
             case 0x89: {
                 u8 prevA = a;
-                a += c;
+                a = a + c + f.cy;
                 f.zf = a == 0;
                 f.n = false;
-                f.h = 0xF - (0xF & prevA) > (0xF & c);
-                f.cy = 0xFF - prevA > c;
+                f.h = ((a ^ c ^ prevA) & 0x10) != 0;
+                f.cy = 0xFF - prevA < c;
                 ++pc;
                 clock += 4;
                 break;
@@ -1497,10 +1501,11 @@ The two lower STAT bits show the current status of the LCD controller.
             }
             case 0x8E: {
                 const u8& reg = vram[hl];
-                f.zf = a == reg;
-                f.n = true;
-                f.h = (a & 0xF) < (reg & 0xF);
-                f.cy = a < reg;
+                u16 res = u16(a) + reg + f.cy;
+                f.zf = res == 0;
+                f.n = false;
+                f.h = (a ^ reg ^res) & 0x10  ? 1 : 0;
+                f.cy = (res & 0x100) != 0;
                 ++pc;
                 clock += 4;
                 break;
