@@ -81,7 +81,7 @@ FFFF        Interrupt Enable Register
 
 public:
 
-    _MBC() : data(0x10000),
+    _MBC() :
             romBankN(128, nullptr),
             ramBankN(3, nullptr),
             romBankIx{0},
@@ -89,7 +89,7 @@ public:
             romWrites(),
             ramEnabled{true},
             romMode{true} {
-
+        data.reserve(0x10000);
         romBank0 = &data[0];
         romBankN[0] = &data[0x4000];
         romBankN[1] = &data[0x4000];

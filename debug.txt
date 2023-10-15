@@ -251,9 +251,36 @@ called at the end of the vblank interrupt
 
 
 
+jr_000_2b48 - this initializes the oam data
+the code to set y, x, tile, flags
 
+    ldh a, [$93]
+jr_000_2b48:
+    ld [hl+], a
+    ldh a, [$92]
+    ld [hl+], a
+    ldh a, [$89]
+    ld [hl+], a
+    ldh a, [$94]
+    ld b, a
+    ldh a, [$8b]
+    or b
+    ld b, a
+    ldh a, [$8a]
+    or b
+    ld [hl+], a
+
+0x2b15 - sets $93 which is the y position.
+$89 is the tile value.
 
 -------------------
+
+
+Pieces display:
+
+it writes the oam data to c000 - c0a0
+
+----------------------
 
 
 

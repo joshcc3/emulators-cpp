@@ -56,7 +56,7 @@ public:
     LCDControl &lcdControl;
     LCDStatus &lcdStatus;
 
-    OAMEntry *oamEntries;
+    const OAMEntry *oamEntries;
 
     uint64_t clock;
 
@@ -68,7 +68,7 @@ public:
               lcdControl{*reinterpret_cast<LCDControl *>(&MUT(vram)[0xFF40])},
               lcdStatus{*reinterpret_cast<LCDStatus *>(&MUT(vram)[0xFF41])},
               vram(ram),
-              oamEntries{reinterpret_cast<OAMEntry *>(&MUT(vram)[OAM_ADDR_START])},
+              oamEntries{reinterpret_cast<const OAMEntry *>(&vram[OAM_ADDR_START])},
               clock{0} {
         debugInitializeCartridgeHeader();
     }
@@ -84,13 +84,15 @@ public:
         if (lcdControl.lcdEnabled) {
 
 
-            std::vector<uint8_t> visibleSprites{};
+            std::vector<u8> visibleSprites{};
             visibleSprites.reserve(10);
 
             for (int i = 0; i < 40 && visibleSprites.size() < 10; ++i) {
-                OAMEntry &e = oamEntries[i];
+                const OAMEntry &e = oamEntries[i];
                 u8 spriteHeight = lcdControl.objSpriteSize ? 16 : 8;
-                if (e.xPos != 0 && e.xPos < 168 && e.yPos < y + spriteHeight && e.yPos >= y) {
+                int xpos = e.xPos - 8;
+                int yPos = e.yPos - 16;
+                if (e.xPos != 0 && e.xPos < 168 && yPos + spriteHeight > y && yPos <= y) {
                     visibleSprites.push_back(i);
                 }
             }
@@ -134,16 +136,18 @@ public:
                 if (lcdControl.objSpriteDisplayEnable) {
                     u8 spriteHeight = lcdControl.objSpriteSize ? 16 : 8;
                     for (auto s: visibleSprites) {
-                        OAMEntry &e = oamEntries[s];
-                        if (e.xPos < x + 8 && x <= e.xPos) {
-                            u8 row = !e.flags.yFlip ? y - e.yPos : spriteHeight - (y - e.yPos);
+                        const OAMEntry &e = oamEntries[s];
+                        int xPos = e.xPos - 8;
+                        int yPos = e.yPos - 16;
+                        if (xPos <= x && x < xPos + 8) {
+                            u8 row = !e.flags.yFlip ? y - yPos : spriteHeight - 1 - (y - yPos);
 
-                            u16 color = getTileData(vram, (e.tileNumber & (~lcdControl.objSpriteSize)) + (row >> 3),
+                            u16 color = getTileData(vram, (e.tileNumber & (~lcdControl.objSpriteSize)) + ((row >> 3) & 1),
                                                     row % 8,
                                                     0x8000);
                             u8 colorShade;
                             u8 &palette = e.flags.palette == 0 ? obp0 : obp1;
-                            u8 column = !e.flags.xFlip ? x - e.xPos : 8 - (x - e.xPos);
+                            u8 column = !e.flags.xFlip ? x - xPos : 7 - (x - xPos);
                             auto col = getPixelColor(column, color, palette, colorShade);
                             uint32_t priority;
                             if (colorShade == 0) {
@@ -260,7 +264,7 @@ public:
 
     static const u8 pixelColor[4][4];
 
-    static const u8 *getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade);
+    static const u8 *getPixelColor(int pixelX, u16 color, const u8 &reg, u8 &colorShade);
 
     static const u16 BGP_ADDR = 0xFF47;
 
@@ -306,7 +310,7 @@ const u8 PPU::pixelColor[4][4] = {{0xff, 0xff, 0xff, 0xff},
 }
 
 
-const u8 *PPU::getPixelColor(int pixelX, u16 color, u8 &reg, u8 &colorShade) {
+const u8 *PPU::getPixelColor(int pixelX, u16 color, const u8 &reg, u8 &colorShade) {
     const u8 *topColor;
     int xoffs = pixelX & 7;
     u8 upper = ((color >> 8) >> (7 - xoffs)) & 1;

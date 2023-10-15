@@ -11,11 +11,10 @@
 #include "Memory.h"
 
 
-using MemoryRef = MBC&;
+using MemoryRef = MBC &;
 
 constexpr int KEYPRESS = sf::Event::EventType::KeyPressed;
 constexpr int KEYRELEASED = sf::Event::EventType::KeyReleased;
-
 
 
 struct InterruptFlag {
@@ -75,13 +74,28 @@ struct OAMFlags {
     u8 xFlip: 1;
     u8 yFlip: 1;
     u8 objToBGPrio: 1;
+
+    friend std::ostream &operator<<(std::ostream &os, const OAMFlags &e);
 };
+
+std::ostream &operator<<(std::ostream &out, const OAMFlags &f) {
+    out << "{p:" << (int)f.palette << ",xF:" << (int)f.xFlip << ",yF:" << (int)f.yFlip << ",pr:" << (int)f.objToBGPrio << "}";
+    return out;
+}
+
 struct OAMEntry {
     u8 yPos;
     u8 xPos;
     u8 tileNumber;
     OAMFlags flags;
+
+    friend std::ostream &operator<<(std::ostream &os, const OAMEntry &e);
 };
+
+std::ostream &operator<<(std::ostream &out, const OAMEntry &e) {
+    out << "{x:" << (int)e.xPos << ",y:" << (int)e.yPos << ",tile:" << (int)e.tileNumber << ",flags:" << e.flags << "}";
+    return out;
+}
 
 struct PixelColor {
     uint32_t priority;
@@ -98,7 +112,6 @@ struct PixelComparator {
         return p1.priority > p2.priority;
     }
 };
-
 
 
 #endif //GBA_EMULATOR_STRUCTS_H

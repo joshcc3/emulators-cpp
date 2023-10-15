@@ -86,7 +86,7 @@ BG & Window enable / priority [Different meaning in CGB Mode]: 0 = Off; 1 = On
                           ieReg{*reinterpret_cast<InterruptEnable *>(&MUT(vram)[0xFFFF])} {
         initializeRegisters();
 
-        _MBC& mbc = MUT(vram);
+        _MBC &mbc = MUT(vram);
 
         mbc[0xFF40] = 0x91;
         mbc[0xFF42] = 0x00;
@@ -182,16 +182,18 @@ The two lower STAT bits show the current status of the LCD controller.
          * call stack at time of bug:
 1a20
 2ca
-
          */
-        // 16330221
-// 15744891
-//        if(pc >= 0x8000 && pc < 0xFF80) {
-//        if(vram[0x0] != 0xC3) {
-// 15660679
-//        if(pc == 0x1ff2) {
-//if(counter >= 15660678) {
-//        if(vram[0xFFE1] == 10) { 15655519
+// 12634626, 1a57
+#ifdef DEBUG
+        {
+            int bufferSize = 100;
+            static std::vector<u16> pcs(bufferSize, 0);
+            static int bufferIx = 0;
+            pcs[bufferIx] = pc;
+            bufferIx = (bufferIx + 1) % bufferSize;
+        }
+#endif
+
         u8 opcode = vram[pc];
         switch (opcode) {
             case 0x01: // ld sp 0x
@@ -339,14 +341,6 @@ The two lower STAT bits show the current status of the LCD controller.
                         clock += 8;
                         break;
                     }
-                    case 0x7F: {
-                        pc += 2;
-                        clock += 8;
-                        f.zf = ((a >> 7) & 1) == 0;
-                        f.n = false;
-                        f.h = true;
-                        break;
-                    }
                     case 0x40:
                     case 0x50:
                     case 0x60:
@@ -396,16 +390,57 @@ The two lower STAT bits show the current status of the LCD controller.
                         f.cy = prevA & 1;
                         break;
                     }
-                    case 0x5F: {
-                        pc += 2;
-                        clock += 8;
-                        f.zf = ((a >> 3) & 1) == 0;
+                    case 0x4F:
+                    case 0x5F:
+                    case 0x6F:
+                    case 0x7F: {
+                        int shift = 2 * ((vram[pc + 1] >> 4) - 0x4) + 1;
+                        f.zf = ((a >> shift) & 1) == 0;
                         f.n = false;
                         f.h = true;
+                        pc += 2;
+                        clock += 8;
+                        break;
+                    }
+                    case 0x8E:
+                    case 0x9E:
+                    case 0xAE:
+                    case 0xBE: {
+                        u8 opcode = vram[pc + 1];
+                        u8 shift = 2 * ((opcode >> 4) - 8) + 1;
+                        u8 mask = ~(1 << shift);
+                        MUT(vram)[hl] = vram[hl] & mask;
+                        pc += 2;
+                        clock += 16;
+                        break;
+                    }
+                    case 0x41:
+                    case 0x51:
+                    case 0x61:
+                    case 0x71: {
+                        u8 opcode = vram[pc + 1];
+                        int shift = 2*((opcode >> 4) - 4);
+                        f.zf = ((c >> shift) & 1) == 0;
+                        f.n = false;
+                        f.h = true;
+                        pc += 2;
+                        clock += 8;
+                        break;
+                    }
+                    case 0x49:
+                    case 0x59:
+                    case 0x69:
+                    case 0x79: {
+                        int shift = 2*((opcode >> 4) - 4) + 1;
+                        f.zf = ((c >> shift) & 1) == 0;
+                        f.n = false;
+                        f.h = true;
+                        pc += 2;
+                        clock += 8;
                         break;
                     }
                     default:
-                        printf("[%d] CB - Opcode not implemented: [%x]", counter, vram[pc + 1]);
+                        printf("[%d] [%x] CB - Opcode not implemented: [%x]", counter, pc, vram[pc + 1]);
                         exit(1);
                 }
                 break;
@@ -632,7 +667,7 @@ The two lower STAT bits show the current status of the LCD controller.
             case 0x1A: {
                 clock += 8;
                 a = vram[de];
-                ++pc;//
+                ++pc;
                 break;
             }
             case 0xCD: {
@@ -1063,12 +1098,6 @@ The two lower STAT bits show the current status of the LCD controller.
                 clock += 8;
                 break;
             }
-            case 0x0B: {
-                --bc;
-                ++pc;
-                clock += 8;
-                break;
-            }
             case 0xFB: {
                 ime = true;
                 ++pc;
@@ -1184,8 +1213,8 @@ The two lower STAT bits show the current status of the LCD controller.
                 ++pc;
                 clock += 8;
                 f.n = false;
-                f.h = (hl & 0xFF) >= 0xFF - (reg & 0xFF);
-                f.cy = hl >= 0xFFFF - reg;
+                f.h = (hl & 0xFF) > 0xFF - (reg & 0xFF);
+                f.cy = hl > 0xFFFF - reg;
                 hl += reg;
                 break;
             }
@@ -1329,8 +1358,174 @@ The two lower STAT bits show the current status of the LCD controller.
                 break;
             }
 
+            case 0x89: {
+                u8 prevA = a;
+                a += c;
+                f.zf = a == 0;
+                f.n = false;
+                f.h = 0xF - (0xF & prevA) > (0xF & c);
+                f.cy = 0xFF - prevA > c;
+                ++pc;
+                clock += 4;
+                break;
+            }
+
+            case 0xEE: {
+                a = a ^ vram[pc + 1];
+                f.zf = a == 0;
+                f.n = false;
+                f.h = false;
+                f.cy = false;
+
+                pc += 2;
+                clock += 8;
+
+                break;
+            }
+            case 0x96: {
+                u8 hlVal = vram[hl];
+                f.h = (a & 0xF) < (0xF & hlVal);
+                f.cy = a < hlVal;
+
+                a = a - hlVal;
+
+                f.zf = a == 0;
+                f.n = true;
+
+                ++pc;
+                clock += 8;
+                break;
+            }
+            case 0x38: {
+                if(f.cy) {
+                    pc = pc + 2 + vram[pc + 1];
+                    clock += 12;
+                } else {
+                    pc += 2;
+                    clock += 8;
+                }
+                break;
+            }
+            case 0x0B:
+            case 0x1B:
+            case 0x2B:
+            case 0x3B: {
+                int ix = (opcode >> 4);
+                u16* regs[4] = {&bc, &de, &hl, &sp};
+                u16* reg = regs[ix];
+                --(*reg);
+                clock += 8;
+                ++pc;
+                break;
+            }
+            case 0x30: {
+                u8 r8 = vram[pc + 1];
+                if(!f.cy) {
+                    u16 jumpAddr = pc + 2 + r8;
+                    pc = jumpAddr;
+                    clock += 12;
+                } else {
+                    pc += 2;
+                    clock += 8;
+                }
+                break;
+            }
+            case 0xB8:
+            case 0xB9:
+            case 0xBA:
+            case 0xBB:
+            case 0xBC:
+            case 0xBD:
+            case 0xBF: {
+                const u8& reg = registers[r[(opcode & 0xF) - 8]];
+                f.zf = a == reg;
+                f.n = true;
+                f.h = (a & 0xF) < (reg & 0xF);
+                f.cy = a < reg;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0x27: {
+                /*
+                 *  /* When adding/subtracting two numbers in BCD form, this instructions
+         * brings the results back to BCD form too. In BCD form the decimals 0-9
+         * are encoded in a fixed number of bits (4). E.g., 0x93 actually means
+         * 93 decimal. Adding/subtracting such numbers takes them out of this
+         * form since they can results in values where each digit is >9.
+         * E.g., 0x9 + 0x1 = 0xA, but should be 0x10. The important thing to
+         * note here is that per 4 bits we 'skip' 6 values (0xA-0xF), and thus
+         * by adding 0x6 we get: 0xA + 0x6 = 0x10, the correct answer. The same
+         * works for the upper byte (add 0x60).
+         * So: If the lower byte is >9, we need to add 0x6.
+         * If the upper byte is >9, we need to add 0x60.
+         * Furthermore, if we carried the lower part (HF, 0x9+0x9=0x12) we
+         * should also add 0x6 (0x12+0x6=0x18).
+         * Similarly for the upper byte (CF, 0x90+0x90=0x120, +0x60=0x180).
+         *
+         * For subtractions (we know it was a subtraction by looking at the NF
+         * flag) we simiarly need to *subtract* 0x06/0x60/0x66 to again skip the
+         * unused 6 values in each byte. The GB does this by only looking at the
+         * NF and CF flags then.
+         */
+                /*
+                 *         s8 add = 0;
+        if ((!NF && (A & 0xf) > 0x9) || HF)
+            add |= 0x6;
+        if ((!NF && A > 0x99) || CF) {
+            add |= 0x60;
+            CF = 1;
+        }
+        A += NF ? -add : add;
+        ZF = A == 0;
+        HF = 0;
+                 */
+                u8 add = 0;
+                if((!f.n && (a & 0xF)) || f.h) {
+                    add |= 0x6;
+                }
+                if((!f.n && (a > 0x99)) || f.cy) {
+                    add |= 0x60;
+                    f.cy = 1;
+                }
+                a += f.n ? -add : add;
+                f.zf = a == 0;
+                f.h = false;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0x8E: {
+                const u8& reg = vram[hl];
+                f.zf = a == reg;
+                f.n = true;
+                f.h = (a & 0xF) < (reg & 0xF);
+                f.cy = a < reg;
+                ++pc;
+                clock += 4;
+                break;
+            }
+            case 0x02: {
+                MUT(vram)[bc] = a;
+                ++pc;
+                clock += 8;
+                break;
+            }
+            case 0xd0: {
+                if (!f.cy) {
+                    u16 lower = vram[sp++];
+                    u16 upper = vram[sp++];
+                    u16 updated = (upper << 8) | lower;
+                    pc = updated;
+                    clock += 20;
+                } else {
+                    ++pc;
+                    clock += 8;
+                }
+                break;
+            }
             default: {
-                printf("[%d] Opcode not implemented: [%x]", counter, opcode);
+                printf("[%d] [%x] Opcode not implemented: [%x]", counter, pc, opcode);
                 exit(1);
             }
         }
