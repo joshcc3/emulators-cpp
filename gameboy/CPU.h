@@ -1516,8 +1516,21 @@ The two lower STAT bits show the current status of the LCD controller.
                 clock += 8;
                 break;
             }
-            case 0xd0: {
+            case 0xD0: {
                 if (!f.cy) {
+                    u16 lower = vram[sp++];
+                    u16 upper = vram[sp++];
+                    u16 updated = (upper << 8) | lower;
+                    pc = updated;
+                    clock += 20;
+                } else {
+                    ++pc;
+                    clock += 8;
+                }
+                break;
+            }
+            case 0xD8: {
+                if (f.cy) {
                     u16 lower = vram[sp++];
                     u16 upper = vram[sp++];
                     u16 updated = (upper << 8) | lower;
