@@ -31,12 +31,14 @@
 class Timer {
 public:
 
-    u8 clock;
+    long long clock;
     u8 &div;
     u8 &tima;
     u8 &tma;
     u8 &tac;
     InterruptFlag &ifReg;
+
+    u8 prevDiv;
 
     Timer(_MBC &ram) :
             div{ram[0xFF04]}, tima{ram[0xFF05]}, tma{ram[0xFF06]}, tac{ram[0xFF07]},
@@ -47,18 +49,23 @@ public:
         tma = 0x00;
         tac = 0x00;
 
+        prevDiv = div;
+
     }
 
     void run() {
 
-        if (div != (clock >> 8)) {
+        if(prevDiv != div) {
             div = 0;
-        } else {
-            div = (clock + 4) >> 8;
+        }
+        clock += 4;
+        clock = clock & ((1 << 22) - 1);
+
+        if((clock & 0xFF) == 0) {
+            ++div;
         }
 
-
-        clock += 4;
+        prevDiv = div;
         /*
          * 0 - 12
          * 1 - 18
@@ -71,6 +78,8 @@ public:
         if (tima == 0xFF && isInc) {
             tima = tma;
             ifReg.timer = true;
+        } else if(isInc) {
+            ++tima;
         }
 
     }

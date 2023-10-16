@@ -89,15 +89,15 @@ std::map<u8, std::string> ramSizeDescr = {
 void dumpCartridgeHeader(std::vector<u8> &ram) {
 
     auto header = *reinterpret_cast<CartridgeHeader *>(&ram[0x100]);
-    printf("entryPoint: %x%x%x", header.entryPoint[0], header.entryPoint[1], header.entryPoint[2]);
+    printf("entryPoint: %x%x%x%x", header.entryPoint[0], header.entryPoint[1], header.entryPoint[2], header.entryPoint[3]);
     std::cout << std::endl;
     std::cout << "nintendoLogo: " << header.nintendoLogo << std::endl;
     std::cout << "title: " << header.title << std::endl;
     std::cout << "licenseCode: " << header.licenseCode << std::endl;
-    std::cout << "sgbFlag: " << header.sgbFlag << std::endl;
+    std::cout << "sgbFlag: " << (int*)(header.sgbFlag)[0] << std::endl;
     std::cout << "cartridgeTyp: " << cartridgeTypeDescr[header.cartridgeTyp] << std::endl;
-    std::cout << "sizeType: " << romSizeDescr[header.sizeType] << std::endl;
-    std::cout << "ramSizeType: " << ramSizeDescr[header.ramSizeType] << std::endl;
+    std::cout << "sizeType: " << int(header.sizeType) << std::endl;
+    std::cout << "ramSizeType: " << int(header.ramSizeType) << std::endl;
     std::cout << "destCode: " << header.destCode << std::endl;
     std::cout << "oldLicenseCode: " << header.oldLicenseCode << std::endl;
     std::cout << "maskROMVersionNo: " << header.maskROMVersionNo << std::endl;

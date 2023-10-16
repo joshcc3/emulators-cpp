@@ -5,6 +5,8 @@
 #include "debug_code.h"
 #include <iostream>
 #include <vector>
+#include <fstream>
+#include "gameboy/debug_utils.h"
 
 using namespace std;
 
@@ -27,12 +29,25 @@ public:
 
 
 int main() {
-    vector<int> v{};
-    v.push_back(0);
-    v.push_back(1);
-    v.push_back(2);
-    v.clear();
-    v.push_back(3);
-    v.push_back(10);
-    cout << v.size() << " " << v[0] << " " << v[1] << " " << v.capacity() << endl;
+
+    vector<u8> data;
+    data.reserve(0xFFFF0);
+//    std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/PokemonRed.gb", std::ios::binary);
+    {
+        std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/streetFighter.gb", std::ios::binary);
+        std::copy(std::istreambuf_iterator(input), {}, data.begin());
+
+        dumpCartridgeHeader(data);
+
+    }
+    cout << "----------------------------" << endl;
+    {
+        std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/tetris.gb", std::ios::binary);
+        std::copy(std::istreambuf_iterator(input), {}, data.begin());
+
+        dumpCartridgeHeader(data);
+    }
+
+    bool a = 1 - 1;
+    cout << (a == 0) << endl;
 }

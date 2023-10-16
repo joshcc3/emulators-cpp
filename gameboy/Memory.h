@@ -55,8 +55,8 @@ FFFF        Interrupt Enable Register
     vec data;
 
     u8 romBankIx;
-    u8 *romBank0;
-    std::vector<u8 *> romBankN;
+    const u8 *romBank0;
+    std::vector<const u8 *> romBankN;
 
     u8 *vram;
 

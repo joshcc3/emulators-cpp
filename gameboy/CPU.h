@@ -184,6 +184,7 @@ The two lower STAT bits show the current status of the LCD controller.
 2ca
          */
 // 12634626, 1a57
+
 #ifdef DEBUG
         {
             int bufferSize = 100;
@@ -193,12 +194,16 @@ The two lower STAT bits show the current status of the LCD controller.
             bufferIx = (bufferIx + 1) % bufferSize;
         }
 
-        if(pc == 0x2b46) {
+        u8 opcode = vram[pc];
 
-        }
+//        static std::map<int, int> opcodeCount;
+//        volatile bool testGuard = false;
+//        if(testGuard) {
+//
+//        }
+
 #endif
 
-        u8 opcode = vram[pc];
         switch (opcode) {
             case 0x01: // ld sp 0x
                 clock += 12;
@@ -314,7 +319,7 @@ The two lower STAT bits show the current status of the LCD controller.
                     case 0x67:
                     case 0x77: {
                         u8 bit = ((vram[pc + 1] >> 4) - 0x4) * 2;
-                        u8 bitVal = a >> bit;
+                        u8 bitVal = (a >> bit) & 1;
                         pc += 2;
                         clock += 8;
                         f.zf = bitVal == 0;
@@ -1026,7 +1031,7 @@ The two lower STAT bits show the current status of the LCD controller.
             case 0xBE: {
                 clock += 8;
                 u8 data = vram[hl];
-                bool result = a - data;
+                u8 result = a - data;
                 f.zf = result == 0;
                 f.n = true;
                 f.h = (a & 0xf) < (data & 0xf);
@@ -1367,7 +1372,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 a = a + c + f.cy;
                 f.zf = a == 0;
                 f.n = false;
-                f.h = ((a ^ c ^ prevA) & 0x10) != 0;
+                f.h = (0xF - 0xF&prevA) < (0xF & c); // TODO  - switch to actual h cf logic
                 f.cy = 0xFF - prevA < c;
                 ++pc;
                 clock += 4;
@@ -1485,7 +1490,7 @@ The two lower STAT bits show the current status of the LCD controller.
         HF = 0;
                  */
                 u8 add = 0;
-                if((!f.n && (a & 0xF)) || f.h) {
+                if((!f.n && (a & 0xF) > 0x9) || f.h) {
                     add |= 0x6;
                 }
                 if((!f.n && (a > 0x99)) || f.cy) {

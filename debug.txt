@@ -165,7 +165,12 @@ jr_000_029a:
 
 Call_000_29a6:
 joypad stuff - writes to the joypad registers.
-location ff80 in hram is for joypad data.
+location ff80 is the newly pressed
+location ff81 is for the current state of pressed keys
+
+Call_000_1c0d: - this function codes the response to buttons after we have loaded the most
+recent keypresses
+
 
 zeros out the data to the background tile map - setting everything to tile 47 which is blank
 ld hl 0x9bff
@@ -270,15 +275,53 @@ jr_000_2b48:
     or b
     ld [hl+], a
 
-0x2b15 - sets $93 which is the y position.
+
+jr_000_1bc8 - jump
+call - Call_000_209c
+2683 - probably populates the moving down tile.
+2ad8 starts the logic to set the oam data at c0000:
+comes in with hl (which contains tile info),
+
+[89] - [96]
+8f is a counter for the number of tiles
+
+0x2b15 - sets $93 which is the y position. and then proceeds to set x as well.
+[93] = $90 + $87 + [de] (0x31bd)
+flags val = [8a]|[8b]|[8c]
+
+flag in [8b] decides if it should add or subtract
+8d and 8e define which tile we are taking about (oam)
+
 $89 is the tile value.
 
 -------------------
+
+8f: 1
+8e: 20
+8d: c0
+96: c2
+97: 10
+a: 80
+95: 80
+b: 07
+de: ff86
+hl: c210
+
+the hram code lies at c210
+
+2b64 is a an array of addresses.
+[$89] contains the index into this array.
+the 12th address is 2c50
+the first 2bytes of that structure are an address.
+The first two bytes of the subsequent address are also an address
+it loads the values +2,3 inside the address to $90, $91
 
 
 Pieces display:
 
 it writes the oam data to c000 - c0a0
+
+2ac4 - it writes 255 to FF93 (which should make a tile dissappear)
 
 ----------------------
 
@@ -328,6 +371,8 @@ Call_001_69c7:
     ldh [rNR10], a
     ldh [rNR30], a
     ret
+
+
 
 
 ---------------
