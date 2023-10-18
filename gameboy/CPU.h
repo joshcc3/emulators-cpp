@@ -1372,7 +1372,7 @@ The two lower STAT bits show the current status of the LCD controller.
                 a = a + c + f.cy;
                 f.zf = a == 0;
                 f.n = false;
-                f.h = (0xF - 0xF&prevA) < (0xF & c); // TODO  - switch to actual h cf logic
+                f.h = (0xF - 0xF&prevA) < (0xF & c);
                 f.cy = 0xFF - prevA < c;
                 ++pc;
                 clock += 4;

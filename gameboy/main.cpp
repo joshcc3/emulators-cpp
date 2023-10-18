@@ -200,6 +200,27 @@ int main() {
 
 }
 
+/*
+ *     vector<u8> data;
+    data.reserve(0xFFFF0);
+//    std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/PokemonRed.gb", std::ios::binary);
+    {
+        std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/streetFighter.gb", std::ios::binary);
+        std::copy(std::istreambuf_iterator(input), {}, data.begin());
+
+        dumpCartridgeHeader(data);
+
+    }
+    cout << "----------------------------" << endl;
+    {
+        std::ifstream input("/home/jc/CLionProjects/gb_emulator/gameboy/tetris.gb", std::ios::binary);
+        std::copy(std::istreambuf_iterator(input), {}, data.begin());
+
+        dumpCartridgeHeader(data);
+    }
+
+ */
+
 
 
 /*
