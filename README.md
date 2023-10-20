@@ -74,6 +74,17 @@ whats an io register
 https://gbdev.io/pandocs/Memory_Map.html
 
 
+
+So one of the issues with the sound is that there are underflows. I suspect that with the sound, we are not publishing to the buffer often enough.
+This is causing that broken sound effect.
+I'm going to put the sound subsystem onto a seperate thread. In order to do this we need to synchronize with all of the sound registers.
+Option 1, lock every mutable access to memory.
+during the audio driver then lock around all accesses to memory. the audio driver spins and is not linked to a clock cycle.
+
+A lock free version could exist as well.
+In this all io registers are marked volatile (especially the sound registers). The sound control and enable registers should have acquire release semantics for loads and stores.
+You'll have to buffer the writes.
+
 GBA Stuff:
 
 

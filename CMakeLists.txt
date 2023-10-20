@@ -8,6 +8,7 @@ project(chip8)
 project(audio_test)
 project(vram_viz)
 project(debug_playground)
+project(multithread_investigation)
 
 
 set(CMAKE_CXX_STANDARD 20)
@@ -23,6 +24,11 @@ add_executable(
         debug_playground
         debug_code.cpp
         debug_code.h
+)
+
+add_executable(
+        multithread_investigation
+        multithreading_investigation.cpp
 )
 
 add_executable(
@@ -60,6 +66,7 @@ add_executable(
 
 
 add_executable(vram_viz gameboy/vram_viz.cpp)
+
 
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})

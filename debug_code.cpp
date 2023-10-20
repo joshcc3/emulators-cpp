@@ -1,234 +1,367 @@
+#include <syncstream>
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include "gameboy/debug_utils.h"
 #include <thread>
 #include <fcntl.h>
+#include <cassert>
+#include <mutex>
+#include <shared_mutex>
 #include "errno.h"
 
 using namespace std;
 
-#define SZ 1000000
+mutex m;
 
-volatile bool barrier = false;
+long long int clockL = 0;
+long long int regL = 0;
 
-template<int ix>
-void
-f(tuple<atomic<int> &, atomic<int> &, atomic<int> &, atomic<int> &> &t,
-  vector<tuple<int, long, int, int, int, int, int, int>> &v) {
-    while (!barrier);
-    int vs[4] = {get<0>(t), get<1>(t), get<2>(t), get<3>(t)};
-    for (int i = 0; i < SZ; ++i) {
-        vs[0] = get<0>(t);
-        vs[1] = get<1>(t);
-        vs[2] = get<2>(t);
-        vs[3] = get<3>(t);
-        auto time = duration_cast<chrono::nanoseconds>(chrono::system_clock::now().time_since_epoch()).count();
-        ++(get<ix>(t));
-        ++vs[ix];
-        v.emplace_back(ix, time, i, sched_getcpu(), vs[0], vs[1], vs[2], vs[3]);
+atomic<bool> done(false);
+
+
+/*
+ * fetch_add
+ * load_store
+ * compare_exchange_strong
+ * atomic_exchange
+ */
+
+template<int>
+void spin();
+
+template<int>
+void cpu();
+
+template<int>
+void ad();
+
+template<>
+void spin<1>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_acquire)) {
+        {
+            lock_guard<mutex> lg(m);
+            ++clockL;
+            regL = clockL;
+        }
+
+    }
+}
+
+template<>
+void cpu<1>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    long long int prev;
+    long long int current;
+    {
+        lock_guard lg(m);
+        prev = clockL;
+        current = prev;
+    }
+
+    while (!done.load(memory_order_relaxed)) {
+        while (prev == current) {
+            lock_guard<mutex> lg(m);
+            current = clockL;
+            regL = current;
+        }
+        prev = current;
+    }
+
+}
+
+template<>
+void ad<1>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_relaxed)) {
+        lock_guard lg(m);
+        long long int x = regL;
+        long long int c = clockL;
+        if (x != c && x != c - 1) {
+            cerr << x << " " << c << endl;
+            assert(false);
+        }
+    }
+}
+
+shared_mutex sm;
+
+
+template<>
+void spin<2>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_acquire)) {
+        {
+            unique_lock lg(sm);
+            ++clockL;
+            regL = clockL;
+        }
+
+    }
+}
+
+template<>
+void cpu<2>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    long long int prev;
+    long long int current;
+    {
+        shared_lock lg(sm);
+        prev = clockL;
+        current = prev;
+    }
+
+    while (!done.load(memory_order_relaxed)) {
+        while (prev == current) {
+            unique_lock lg(sm);
+            current = clockL;
+            regL = current;
+        }
+        prev = current;
+    }
+
+}
+
+template<>
+void ad<2>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_relaxed)) {
+        unique_lock lg(sm);
+        long long int x = regL;
+        long long int c = clockL;
+        if (x != c && x != c - 1) {
+            cerr << x << " " << c << endl;
+            assert(false);
+        }
     }
 }
 
 
-struct MyBuf {
-    static constexpr int capacity = 0x10000000;
+atomic_flag spinLock = ATOMIC_FLAG_INIT;
 
-    char *buffer;
-    char *it;
-    size_t sz;
 
-    MyBuf() : buffer(new char[capacity]), sz{0}, it{buffer} {
+// without contention goes up to probable 81782805 ops per second or approx 5.5 instructions per loop
+// with betwee 1 and 5 * 10^8
+template<>
+void spin<3>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_acquire)) {
+        {
+            while (spinLock.test_and_set(memory_order_acquire));
+            ++clockL;
+            regL = clockL;
+            spinLock.clear(memory_order_release);
+        }
+
     }
-
-    inline void append(const char *a, size_t s) {
-        int offs = s % 8;
-        char *iter = it;
-        for (int j = 0; j < offs; ++j) {
-            *(iter++) = *(a++);
-        }
-        const auto *aL = reinterpret_cast<const long long int *>(a);
-        long long int *iL = reinterpret_cast<long long int *>(iter);
-        for (int j = offs; j < s; j += sizeof(long long int)) {
-            *(iL++) = *(aL++);
-        }
-        it += s;
-        sz += s;
-    }
-
-
-    template<typename T>
-    inline void append(T l) {
-        if (l < 0) {
-            *(it++) = '-';
-            ++sz;
-            l *= -1;
-        }
-        char *itCp = it;
-        int digSz = 1;
-        while (l > 9) {
-            long r = l % 10;
-            l /= 10;
-            *(it++) = r + '0';
-            ++sz;
-            ++digSz;
-        }
-        *(it++) = l + '0';
-        ++sz;
-        for (int j = 0; j < digSz / 2; ++j) {
-            swap(itCp[j], itCp[digSz - j - 1]);
-        }
-    }
-
-    inline void append(char c) {
-        *(it++) = c;
-        ++sz;
-    }
-
-    ~MyBuf() {
-        delete[] buffer;
-        if (sz > capacity) {
-            cerr << "Allocated bad" << endl;
-            exit(1);
-        }
-    }
-};
-
-void appendToBuf(MyBuf &buf, const string &&it);
-
-#define CLOCK(a) { \
-    auto _s = chrono::system_clock::now(); \
-    a;             \
-    auto _e = chrono::system_clock::now(); \
-    timeSpent[i] += elapsed(_s, _e);                      \
 }
 
-string &&to_string() {
+template<>
+void cpu<3>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    long long int prev;
+    long long int current;
+    {
+        while (spinLock.test_and_set(memory_order_acquire));
+        prev = clockL;
+        current = prev;
+        spinLock.clear(memory_order_release);
+    }
+
+    while (!done.load(memory_order_relaxed)) {
+        while (prev == current) {
+            while (spinLock.test_and_set(memory_order_acquire));
+            current = clockL;
+            regL = current;
+            spinLock.clear(memory_order_release);
+        }
+        prev = current;
+    }
 
 }
 
+template<>
+void ad<3>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_relaxed)) {
+        while (spinLock.test_and_set(memory_order_acquire));
+        long long int x = regL;
+        long long int c = clockL;
+        spinLock.clear(memory_order_release);
+        if (x != c && x != c - 1) {
+            cerr << x << " " << c << endl;
+            assert(false);
+        }
+    }
+}
+
+
+atomic<uint64_t> unit;
+
+#define CLOCKL(a, m) (a.load(m) >> 32)
+/*
+ * using memory order relaxed for both operations: 8 * 10^8 ops per second.
+ * using memory order seq cst for both operations there is a hit, it goes down to 7.5 * 10^8 operations per second.
+ *
+ * Uncontended using just a single long for the atomic increment of both - 1.5*10^9 (<3 instructions per loop).
+ */
+template<>
+void spin<4>() {
+    assert(unit.is_always_lock_free);
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_acquire)) {
+        {
+            unit.fetch_add(0x100000001, memory_order_relaxed);
+        }
+
+    }
+    cout << "Actual ops: [" << CLOCKL(unit, memory_order_relaxed)/5 << "]" << endl;
+}
+
+template<>
+void cpu<4>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    long long int prev;
+    long long int current;
+    {
+        u64 v = unit.load(memory_order_relaxed);
+        prev = v >> 32;
+        current = prev;
+    }
+
+    while (!done.load(memory_order_relaxed)) {
+        while (prev == current) {
+            current = CLOCKL(unit, memory_order_relaxed);
+        }
+        prev = current;
+    }
+
+}
+
+template<>
+void ad<4>() {
+//    osyncstream(cout) << sched_getcpu() << endl;
+    while (!done.load(memory_order_relaxed)) {
+        u64 v = unit.load(memory_order_relaxed);
+        long long int x = v & 0xFFFFFFFF;
+        long long int c = v >> 32;
+        if (x != c && x != c - 1) {
+            cerr << x << " " << c << endl;
+            assert(false);
+        }
+    }
+}
+
+// if I put my data on one cache line, can I guarentee atomicity?
+// like each processor will always see the upto date latest version of the data.
+// then do I even need to synchronize on the two variables? can they both be relaxed
+
+//atomic<int> clockLF(0);
+//atomic<int> lock(0);
+//int regLF1(0);
+//int regLF2(0);
+//
+//template<>
+//void spin<4>() {
+//    int y;
+//    atomic<int&> x(y);
+//
+////    osyncstream(cout) << sched_getcpu() << endl;
+//
+//    while(!done.load(memory_order_relaxed)) {
+//        // is fetch add slower than a load with a store?
+//        clockLF.fetch_add(1, memory_order_acq_rel);
+//    }
+//
+//}
+//
+//template<>
+//void cpu<4>() {
+//
+//    int prev;
+//    int current;
+////    osyncstream(cout) << sched_getcpu() << endl;
+//
+//    while(!done.load(memory_order_relaxed)) {
+//        while(prev == current) {
+//            int expected = 0;
+//            while(!lock.compare_exchange_strong(expected, 1, memory_order_acquire)) {
+//                expected = 0;
+//            }
+//            current = clockLF2;
+//            regLFF2 = current;
+//            lock.store(0, memory_order_release);
+//        }
+//        prev = current;
+//    }
+//}
+//
+//template<>
+//void ad<4>() {
+////    osyncstream(cout) << sched_getcpu() << endl;
+//    while(!done.load(memory_order_relaxed)) {
+//        int expected = 0;
+//        while(!lock.compare_exchange_strong(expected, 1, memory_order_acquire)) {
+//            expected = 0;
+//        }
+//        int x = regLFF2;
+//        int c = clockLF2;
+//        lock.store(0, memory_order_release);
+//        if(x != c && x != c - 1) {
+//            cerr << "Reg: " << x << " " << "; Clock: " << c << endl;
+//            assert(false);
+//        }
+//    }
+//}
+
+
+
+/*
+ * Ops/s: 4164770
+Ops/s: 8904858
+Ops/s: 13072515
+[1] Avg Ops: 8.71405e+06
+Ops/s: 2405756
+Ops/s: 4575252
+Ops/s: 7357265
+[2] Avg Ops: 4.77942e+06
+Ops/s: 8283071
+Ops/s: 11789284
+Ops/s: 19719199
+[3] Avg Ops: 1.32639e+07
+ */
 int main() {
+    {
+        regL = 0;
+        constexpr int type = 4;
+        double avgOps = 0;
+        for (int i = 0; i < 24; ++i) {
 
+            unit.store(0, memory_order_relaxed);
+            done.store(false, memory_order_release);
+            thread spinT{spin<type>};
+            thread cpuT{cpu<type>};
+            thread adT{ad<type>};
 
+            constexpr int SLEEP_TIME_S = 5;
 
-    using th = thread;
-    using ths = vector<th>;
+            sleep(5);
+            done.store(true, memory_order_acq_rel);
 
-    atomic<int> a(0);
-    atomic<int> b(0);
-    atomic<int> c(0);
-    atomic<int> d(0);
+            spinT.join();
+            cpuT.join();
+            adT.join();
 
-    vector<tuple<int, long, int, int, int, int, int, int>> v1;
-    vector<tuple<int, long, int, int, int, int, int, int>> v2;
-    vector<tuple<int, long, int, int, int, int, int, int>> v3;
-    vector<tuple<int, long, int, int, int, int, int, int>> v4;
+            // lock version: 4859407
 
-    tuple<atomic<int> &, atomic<int> &, atomic<int> &, atomic<int> &> t(a, b, c, d);
-
-    th t1(f<0>, ref(t), ref(v1));
-    th t2(f<1>, ref(t), ref(v2));
-    th t3(f<2>, ref(t), ref(v3));
-    th t4(f<3>, ref(t), ref(v4));
-
-    barrier = true;
-
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
-
-    cout << "Writing data" << endl;
-    auto start = chrono::system_clock::now();
-
-    int fd = open("multi_thread_relaxed_writes.csv", O_WRONLY | O_CREAT);
-    if (fd < 0) {
-        cerr << "Could not open file" << endl;
-        exit(1);
-    }
-
-    double timeSpent[5] = {0, 0, 0, 0, 0};
-    auto elapsed = [](auto t1, auto t2) {
-        return chrono::duration_cast<chrono::nanoseconds>(t2 - t1).count() / 1000000000.0;
-    };
-
-
-    MyBuf buf;
-
-    const string header = "tid,time,iteration,cpu,v1,v2,v3,v4\n";
-    buf.append(header.c_str(), header.size());
-
-    for (auto v: {v1, v2, v3, v4}) {
-        for (int i = 0; i < SZ; ++i) {
-//            string line[15];
-            auto e = v[i];
-
-            CLOCK(
-                    int i = 0;
-                    buf.append(get<0>(e));
-            )
-            CLOCK(
-                    int i = 1;
-                    buf.append(',');
-
-            )
-            CLOCK(
-                    int i = 2;
-                    buf.append(get<1>(e));
-            )
-            buf.append(',');
-            buf.append(get<2>(e));
-            buf.append(',');
-            buf.append(get<3>(e));
-            buf.append(',');
-            buf.append(get<4>(e));
-            buf.append(',');
-            buf.append(get<5>(e));
-            buf.append(',');
-            buf.append(get<6>(e));
-            buf.append(',');
-            buf.append(get<7>(e));
-            buf.append('\n');
+            int clockL = CLOCKL(unit, memory_order_relaxed);
+            avgOps += (double(clockL) / SLEEP_TIME_S);
+            cout << "Ops/s: " << (clockL / SLEEP_TIME_S) << endl;
 
         }
+
+        cout << "[" << type << "] Avg Ops: " << avgOps / 3 << endl;
     }
-
-    auto dataCp = chrono::system_clock::now();
-
-    int bytesWritten = write(fd, buf.buffer, buf.sz);
-    if (bytesWritten != buf.sz) {
-        cerr << "Fail" << endl;
-        exit(1);
-    }
-
-    string errnoTable[100];
-    fill(errnoTable, errnoTable + 100, "-");
-    errnoTable[EBADF] = "EBADF";
-    errnoTable[EINTR] = "EINTR";
-    errnoTable[EIO] = "EIO";
-
-    int closeRes = 0;
-    if (close(fd)) {
-        cerr << "Failed to close file [" << closeRes << "] [" << errnoTable[errno] << "]" << endl;
-    }
-
-
-    auto end = chrono::system_clock::now();
-
-    cout << "Total [" << elapsed(start, end) << "s]" << endl;
-    cout << "Data copy [" << elapsed(start, dataCp) << "s]" << endl;
-    cout << "Write syscall [" << elapsed(dataCp, end) << "s]" << endl;
-    cout << "single constant byte [" << timeSpent[0] << "s]" << endl;
-    cout << "single char comma [" << timeSpent[1] << "s]" << endl;
-    cout << "long int [" << timeSpent[2] << "s]" << endl;
 
 }
-
-inline void appendToBuf(MyBuf &buf, const string &&s) {
-    const char *src = (s.c_str());
-    unsigned long strSz = s.size();
-    buf.append(src, strSz);
-}
-
-
-
