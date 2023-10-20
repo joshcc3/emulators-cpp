@@ -12,6 +12,8 @@
 #include <vector>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
+#include <atomic>
+#include <thread>
 #include "audio_driver.h"
 
 #include "structs.h"
@@ -26,18 +28,22 @@ using namespace std;
 class gb_emu {
 public:
 
+    constexpr static int FREQ = (1 << 22);
+    constexpr static int SPEEDUP = 1;
+    constexpr static int TIME_QUANTUM = 1000000 / FREQ / SPEEDUP;
+
     MemoryRef ram;
     PPU ppu;
     CPU cpu;
-    AudioDriver ad;
     Timer timer;
     Joypad jp;
     InterruptFlag &ifReg;
+    atomic<u64> &clockVar;
 
-    gb_emu(vector<u8> &pixels, MemoryRef ram) :
-            ram{ram}, ppu{pixels, ram}, cpu{ram},
-            ad{MUT(ram)}, timer{MUT(ram)}, ifReg{*reinterpret_cast<InterruptFlag *>(&MUT(ram)[0xFF0F])},
-            jp{ram} {}
+    gb_emu(vector<u8> &pixels, MemoryRef ram, atomic<u64> &clockVar) :
+            ram{ram}, ppu{pixels, ram}, cpu{ram}, timer{MUT(ram)},
+            ifReg{*reinterpret_cast<InterruptFlag *>(&MUT(ram)[0xFF0F])},
+            jp{ram}, clockVar{clockVar} {}
 
     void run(vector<sf::Event> &es) {
 
@@ -90,12 +96,6 @@ public:
         }
         ifReg.vBlank = false;
 
-        if (cpu.clock > (1 << 22) && ppu.clock > (1 << 22) && ad.clock > (1 << 22)) {
-            cpu.clock = cpu.clock & ((1 << 22) - 1);
-            ppu.clock = ppu.clock & ((1 << 22) - 1);
-            ad.clock = (ad.clock) & ((1 << 22) - 1);
-        }
-
 #ifdef VERBOSE
         auto p2 = chrono::high_resolution_clock::now();
         auto pd = p2 - p1;
@@ -106,20 +106,20 @@ public:
 
     void runDevices() {
 
-        while (cpu.clock <= ppu.clock || ad.clock <= ppu.clock) {
+
+        while (cpu.clock <= ppu.clock) {
+            while (cpu.clock >= clockVar.load(memory_order_seq_cst));
             jp.refresh();
 
             if (timer.clock <= ppu.clock) {
                 timer.run();
             }
             if (cpu.clock <= ppu.clock) {
+                lock_guard lg(ram.memoryAccess);
                 cpu.processInterrupts();
                 MUT(ram).flushWrites();
                 cpu.fetchDecodeExecute();
                 MUT(ram).flushWrites();
-            }
-            if (ad.clock <= ppu.clock) {
-                ad.run(cpu.clock);
             }
             if (ppu.dma != 0) {
                 ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
@@ -128,6 +128,13 @@ public:
         }
     }
 };
+
+void clockThread(std::atomic<u64> &clockVar, std::atomic_flag& isRunning) {
+    while(isRunning.test(memory_order_relaxed)) {
+        usleep(gb_emu::TIME_QUANTUM);
+        clockVar.fetch_add(4, memory_order_seq_cst);
+    }
+}
 
 int main() {
 
@@ -169,10 +176,16 @@ int main() {
         cerr << "Cartridge ROM does not exist [" << cartridgeROM << "]" << endl;
     }
 
+    atomic<u64> clockVar(0);
+    atomic_flag isRunning(true);
 
     MBC ram(bootROM, cartridgeROM);
-    gb_emu emu{pixels, ram};
-//    gb_emu emu{"/home/jc/projects/cpp/emulators-cpp/gameboy/PokemonReg.gb", pixels};
+    gb_emu emu{pixels, ram, clockVar};
+
+    AudioDriver audioDriver{MUT(ram), clockVar, isRunning, gb_emu::TIME_QUANTUM};
+
+    std::thread clockT([&clockVar, &isRunning]() { clockThread(clockVar, isRunning); });
+    std::thread audioT([] () {});
 
     int instructionCount = 0;
 
@@ -197,7 +210,9 @@ int main() {
         w.display();
 
     }
-
+    isRunning.clear(memory_order_relaxed);
+    clockT.join();
+    audioT.join();
 }
 
 /*

@@ -5,9 +5,6 @@
 #ifndef GBA_EMULATOR_CPU_H
 #define GBA_EMULATOR_CPU_H
 
-#include "PPU.h"
-#include "structs.h"
-#include "audio_driver.h"
 #include <fstream>
 #include <cassert>
 #include <array>
@@ -25,6 +22,11 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+
+#include "PPU.h"
+#include "structs.h"
+#include "audio_driver.h"
+
 
 class CPU {
 public:
@@ -72,7 +74,7 @@ BG & Window enable / priority [Different meaning in CGB Mode]: 0 = Off; 1 = On
     u16 sp;
     u16 pc;
 
-    uint64_t clock;
+    u64 clock;
 
     MemoryRef vram;
 

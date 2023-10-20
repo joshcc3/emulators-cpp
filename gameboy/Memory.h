@@ -8,6 +8,7 @@
 #include "ShmAlloc.h"
 #include <vector>
 #include <fstream>
+#include <mutex>
 
 #define DEBUG
 
@@ -45,6 +46,8 @@ FF80-FFFE   High RAM (HRAM)
 FFFF        Interrupt Enable Register
      *
      */
+
+    mutable std::mutex memoryAccess;
 
     bool ramEnabled;
     bool romMode;
@@ -90,7 +93,8 @@ public:
             ramBankIx{0},
             romWrites(),
             ramEnabled{true},
-            romMode{true} {
+            romMode{true},
+            memoryAccess() {
         data.reserve(0x10000);
         romBank0 = &data[0];
         romBankN[0] = &data[0x4000];
@@ -164,6 +168,7 @@ public:
 
 
 };
+
 
 using MBC = const _MBC;
 #define MUT(a) const_cast<_MBC&>(a)

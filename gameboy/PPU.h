@@ -58,7 +58,7 @@ public:
 
     const OAMEntry *oamEntries;
 
-    uint64_t clock;
+    u64 clock;
 
     PPU(std::vector<sf::Uint8> &pixels, MemoryRef ram)
             : pixels{pixels}, scx{MUT(vram)[0xFF43]}, scy{MUT(vram)[0xFF42]}, ly{MUT(vram)[0xFF44]},

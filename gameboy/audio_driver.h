@@ -12,9 +12,11 @@
 #include <iostream>
 #include <memory>
 #include <functional>
+#include <stdatomic.h>
 #include "structs.h"
+#include <atomic>
 
-#define AUDIO_NOT_WORKING
+//#define AUDIO_NOT_WORKING
 //#define DEBUG
 
 using u8 = uint8_t;
@@ -140,7 +142,7 @@ struct PulseA {
         return !(*this == a);
     }
 
-    int getFreq() {
+    int getFreq() const {
         return (u16(freqHi) << 8) | freqLo;
     }
 };
@@ -157,7 +159,7 @@ struct PulseB {
     u8 counter: 1;
     u8 restart: 1;
 
-    int getFreq() {
+    int getFreq() const {
         return (u16(freqHi) << 8) | freqLo;
     }
 
@@ -281,7 +283,11 @@ public:
     constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
                                                    double(RingBuffer::SAMPLES_PER_SECOND) / 1.8);
 
+    const int timeQuantum;
+    std::mutex &memoryAcceess;
     uint64_t clock;
+    std::atomic<u64> &clockVar;
+    std::atomic_flag &isRunning;
 
     PulseA &paReg;
     PulseB &pbReg;
@@ -308,8 +314,9 @@ public:
 
     snd_pcm_t *handle;
 
-    AudioDriver(_MBC& vram)
-            : ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
+    AudioDriver(_MBC &vram, std::atomic<u64> &clockVar, std::atomic_flag &isRunning, int timeQuantum)
+            : timeQuantum{timeQuantum}, clockVar{clockVar}, isRunning{isRunning},
+              memoryAcceess(vram.memoryAccess), ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
               paReg{*reinterpret_cast<PulseA *>(&vram[0xFF10])},
               pbReg{*reinterpret_cast<PulseB *>(&vram[0xFF16])},
               wvReg{*reinterpret_cast<Wave *>(&vram[0xFF1B])},
@@ -361,92 +368,77 @@ public:
 
     }
 
-    void run(uint64_t cpuClock) {
-        u8 masterVolume2 = ccReg.so2Output;
-        u8 masterVolume1 = ccReg.so1Output;
+    void run() {
 
-        // can choose sending sound to different terminals as well
+        while (isRunning.test(std::memory_order_relaxed)) {
 
-        if (soundOnOff.allSound == 0) {
-            paReg.clear();
-            pbReg.clear();
-            wvReg.clear();
-            ccReg.clear();
-            soundOutputSelection.clear();
-            soundOnOff.clear();
-        } else {
-            if (paReg.counter && cpPA != paReg || paReg.restart) {
-                ch1.snapToNow();
-                paReg.restart = 0;
-                int initialVol = paReg.initialVol;
-                int initialFreq = paReg.getFreq();
-                int finalVol = paReg.getFreq();
-                int finalFreq = 0;
-                generatePulseA(paReg, 0, finalVol, finalFreq);
+            usleep(timeQuantum);
 
-//                for(int i = 0; i < 4 && paReg.counter == 0 && finalVol > 0; ++i) {
-//                    generatePulseA(paReg, 0, finalVol, finalFreq);
-//                    paReg.initialVol = finalVol;
-//                    paReg.freqLo = finalFreq & 0xFF;
-//                    paReg.freqHi = (paReg.freqHi & 0xf0) | ((finalFreq >> 8) & 0x7);
-//                }
+            clock = clockVar.load(std::memory_order_seq_cst);
+            // can choose sending sound to different terminals as well
+            {
+                std::lock_guard lg(memoryAcceess);
+                if (soundOnOff.allSound == 0) {
+                    paReg.clear();
+                    pbReg.clear();
+                    wvReg.clear();
+                    ccReg.clear();
+                    soundOutputSelection.clear();
+                    soundOnOff.clear();
+                } else {
+                    if (paReg.counter && cpPA != paReg || paReg.restart) {
+                        ch1.snapToNow();
+                        paReg.restart = 0;
+                        int initialVol = paReg.initialVol;
+                        int initialFreq = paReg.getFreq();
+                        int finalVol = paReg.getFreq();
+                        int finalFreq = 0;
+                        PulseA pulse = paReg;
+                        generatePulseA(pulse, 0, finalVol, finalFreq);
 
-                paReg.initialVol = initialVol;
-                paReg.freqLo = initialFreq & 0xFF;
-                paReg.freqHi = (paReg.freqHi & 0xf0) | ((initialFreq >> 8) & 0x7);
-            }
-//            else if (paReg.counter + paReg.restart == 0) {
-//                ch1.drain(ch1.size());
-//            }
 
-            if (pbReg.counter && cpPB != pbReg || pbReg.restart > 0) {
-                ch2.snapToNow();
-                pbReg.restart = 0;
+                        paReg.initialVol = initialVol;
+                        paReg.freqLo = initialFreq & 0xFF;
+                        paReg.freqHi = (paReg.freqHi & 0xf0) | ((initialFreq >> 8) & 0x7);
+                    }
 
-                int initialVol = pbReg.initialVol;
-                int finalVol = pbReg.getFreq();
-                generatePulseB(pbReg, 0, finalVol);
-//                for(int i = 0; i < 3 && pbReg.counter == 0 && finalVol > 0; ++i) {
-//                    generatePulseB(pbReg, 0, finalVol);
-//                    pbReg.initialVol = finalVol;
-//                }
+                    if (pbReg.counter && cpPB != pbReg || pbReg.restart > 0) {
+                        ch2.snapToNow();
+                        pbReg.restart = 0;
 
-                pbReg.initialVol = initialVol;
-            }
-//            else if (pbReg.counter + pbReg.restart == 0) {
-//                ch2.drain(ch2.size());
-//            }
-            if (wvReg.counter && wvReg != cpW || wvReg.restart) {
-                ch3.snapToNow();
-                wvReg.restart = 0;
-                generateWave(wvReg, 0);
-            }
+                        int initialVol = pbReg.initialVol;
+                        int finalVol = pbReg.getFreq();
+                        const PulseB pulse = pbReg;
+                        pbReg.initialVol = initialVol;
+                        generatePulseB(pulse, 0, finalVol);
+
+                    }
+
+                    if (wvReg.counter && wvReg != cpW || wvReg.restart) {
+                        ch3.snapToNow();
+                        wvReg.restart = 0;
+                        generateWave(wvReg, 0);
+                    }
 //            else if ((channel3SoundOnOff >> 7) == 0) {
 //                ch3.drain(ch3.size());
 //            }
-            if (cpN != noReg) {
-                ch4.snapToNow();
+                    if (cpN != noReg) {
+                        ch4.snapToNow();
 
+                    }
+                }
+                cpPA = paReg;
+                cpPB = pbReg;
+                cpW = wvReg;
+                cpN = noReg;
+                cpCCReg = ccReg;
+                cpSoundOutputSelection = soundOutputSelection;
+                cpSoundOnOff = soundOnOff;
             }
+
+            flush();
+
         }
-
-        static auto clocked = std::chrono::high_resolution_clock::now();
-        if (clock % CLOCKS_PER_FLUSH >= cpuClock % CLOCKS_PER_FLUSH) {
-            auto now = std::chrono::high_resolution_clock::now();
-            auto elapsed = (now - clocked);
-            clocked = now;
-            auto samples = flush();
-        }
-
-        clock = cpuClock;
-
-        cpPA = paReg;
-        cpPB = pbReg;
-        cpW = wvReg;
-        cpN = noReg;
-        cpCCReg = ccReg;
-        cpSoundOutputSelection = soundOutputSelection;
-        cpSoundOnOff = soundOnOff;
     }
 
     long long flush() {
@@ -503,7 +495,7 @@ public:
 #endif
     }
 
-    void generatePulseB(PulseB &b, int pulseLen, int &finalVol) {
+    void generatePulseB(const PulseB &b, int pulseLen, int &finalVol) {
         int duty = b.dutyPattern;
         int len = b.counter ? b.len : pulseLen;
         int initialVol = b.initialVol;
@@ -529,7 +521,7 @@ public:
     }
 
 
-    void generatePulseA(PulseA &pa, int pulseLen, int &finalVol, int &finalFreq) {
+    void generatePulseA(const PulseA &pa, int pulseLen, int &finalVol, int &finalFreq) {
 
         int sweepTime = pa.sweepTime;
         int sweepDir = pa.sweepDir ? 1 : -1;
@@ -553,7 +545,7 @@ public:
         const u8 low = waveForm[duty][0];
         const u8 high = waveForm[duty][1];
         const long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
-        const long long soundLengthNs = 1e9/256.0 * (64 - len);
+        const long long soundLengthNs = 1e9 / 256.0 * (64 - len);
         finalFreq = initialFreq;
         long long timePassedNs = 0;
         while (timePassedNs <= soundLengthNs) {

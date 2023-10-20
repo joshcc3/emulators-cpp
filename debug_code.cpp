@@ -332,6 +332,7 @@ Ops/s: 19719199
 [3] Avg Ops: 1.32639e+07
  */
 int main() {
+
     {
         regL = 0;
         constexpr int type = 4;
