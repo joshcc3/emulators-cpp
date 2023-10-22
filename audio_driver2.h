@@ -370,8 +370,7 @@ public:
             long long elapsedTime = chrono::duration_cast<chrono::nanoseconds>(now - cp).count();
             cp = now;
             bool outputHigh = (timePassedNs % (8 * oneClock)) >= (low * oneClock);
-
-            timePassedNs += elapsedTime;
+            timePassedNs += 1e9/AlsaSM::SAMPLES_PER_SECOND;
 
             return outputHigh ? volume : 0;
         } else {
@@ -450,7 +449,7 @@ public:
             u8 ch3 = wSM.step();
             u8 ch4 = nSM.step();
             u8 output = ch1 + ch2 + ch3 + ch4;
-            cout << int(output * 4) << endl;
+            cout << int(ch1) << endl;
             buffer[i] = output * 4;
         }
 
