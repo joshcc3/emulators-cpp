@@ -2,7 +2,7 @@
 // Created by jc on 24/09/23.
 //
 
-#define DEBUG
+#define PERF_DEBUG
 //#define VERBOSE
 
 #include <algorithm>
@@ -30,7 +30,7 @@ public:
 
     constexpr static int FREQ = (1 << 22);
     constexpr static int SPEEDUP = 1;
-    constexpr static int TIME_QUANTUM = 1000000 / FREQ / SPEEDUP;
+    constexpr static double TIME_QUANTUM = 1000000.0 / FREQ / SPEEDUP;
 
     MemoryRef ram;
     PPU ppu;
@@ -52,9 +52,17 @@ public:
         auto p1 = chrono::high_resolution_clock::now();
         uint64_t startingClock[3] = {ppu.clock, cpu.clock, ad.clock};
 #endif
+
+#ifdef PERF_DEBUG
+        static u64 counter = 0;
+        static double rowDisplayTime = 0;
+#endif
         jp.processKeyEvents(es);
         runDevices();
         for (int i = 0; i < PPU::PIXEL_ROWS; ++i) {
+#ifdef PERF_DEBUG
+            const chrono::time_point startTime = chrono::system_clock::now();
+#endif
             uint64_t startClock = ppu.clock;
             ppu.ly = i;
             ppu.lcdStatus.coincidenceFlag = ppu.ly == ppu.lyc;
@@ -78,12 +86,20 @@ public:
             cpu.ifReg.lcdStat = ppu.lcdStatus.hblankInterrupt;
             ppu.hBlank();
             runDevices();
-#ifndef DEBUG
 
-            // usleep(1e6 * (ppu.clock - startClock) / 4 / (1 << 20) / 2);
-
+#ifdef PERF_DEBUG
+            const chrono::time_point endTime = chrono::system_clock::now();
+            rowDisplayTime = rowDisplayTime / 4.0 +  3 / 4.0 *
+                             chrono::duration_cast<chrono::nanoseconds>(endTime - startTime).count();
 #endif
         }
+#ifdef PERF_DEBUG
+        ++counter;
+        if ((counter & 0x1F) == 0) {
+            cout << "-- RDT: [" << rowDisplayTime / 1000.0 << "us]" << endl;
+        }
+#endif
+
 
         ppu.lcdStatus.modeFlag = 1;
         cpu.ifReg.vBlank = true;
@@ -105,10 +121,15 @@ public:
     }
 
     void runDevices() {
-
+#ifdef PERF_DEBUG
+        static int counter = 0;
+        static u64 runDeviceTime = 0;
+#endif
 
         while (cpu.clock <= ppu.clock) {
-            while (cpu.clock >= clockVar.load(memory_order_seq_cst));
+#ifdef PERF_DEBUG
+            const chrono::time_point start = chrono::system_clock::now();
+#endif
             jp.refresh();
 
             if (timer.clock <= ppu.clock) {
@@ -125,12 +146,30 @@ public:
                 ppu.dmaTransfer(); // should take 160 microseconds of 600 cycles
                 ppu.dma = 0;
             }
+
+#ifdef PERF_DEBUG
+            const chrono::time_point end = chrono::system_clock::now();
+            u64 elapsedTime = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+            if (runDeviceTime == 0) {
+                runDeviceTime = elapsedTime;
+            } else {
+                runDeviceTime = runDeviceTime / 4 + elapsedTime * 3 / 4;
+            }
+
+#endif
         }
+#ifdef PERF_DEBUG
+        ++counter;
+        if ((counter & 0x3FFF) == 0) {
+            cout << "DRT: [" << runDeviceTime / 1000.0 << "us]" << endl;
+        }
+#endif
+
     }
 };
 
-void clockThread(std::atomic<u64> &clockVar, std::atomic_flag& isRunning) {
-    while(isRunning.test(memory_order_relaxed)) {
+void clockThread(std::atomic<u64> &clockVar, std::atomic_flag &isRunning) {
+    while (isRunning.test(memory_order_relaxed)) {
         usleep(gb_emu::TIME_QUANTUM);
         clockVar.fetch_add(4, memory_order_seq_cst);
     }
@@ -185,7 +224,9 @@ int main() {
     AudioDriver audioDriver{MUT(ram), clockVar, isRunning, gb_emu::TIME_QUANTUM};
 
     std::thread clockT([&clockVar, &isRunning]() { clockThread(clockVar, isRunning); });
-    std::thread audioT([] () {});
+    std::thread audioT([&audioDriver]() {
+        audioDriver.run();
+    });
 
     int instructionCount = 0;
 

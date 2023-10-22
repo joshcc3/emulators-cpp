@@ -50,6 +50,7 @@ http://www.csounds.com/manual/html/RealTimeLinux.html
 
 https://www.alsa-project.org/wiki/File:Alsa_bps_formula.png
 https://www.linuxjournal.com/article/6735
+https://www.alsa-project.org/alsa-doc/alsa-lib/pcm.html
 
 
 Bugs

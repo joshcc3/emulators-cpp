@@ -17,7 +17,7 @@
 #include <atomic>
 
 //#define AUDIO_NOT_WORKING
-//#define DEBUG
+//#define PERF_DEBUG
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -280,10 +280,9 @@ public:
     constexpr static long long SAMPLES_PER_FLUSH = RingBuffer::SAMPLES_PER_SECOND / 100;
     // send out 20ms of sound per iteration.
     std::array<u8, SAMPLES_PER_FLUSH> mixer;
-    constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) /
-                                                   double(RingBuffer::SAMPLES_PER_SECOND) / 1.8);
+    constexpr static long long CLOCKS_PER_FLUSH = (double(4 << 20) * double(SAMPLES_PER_FLUSH) / double(RingBuffer::SAMPLES_PER_SECOND) / 1.8);
 
-    const int timeQuantum;
+    const double timeQuantum;
     std::mutex &memoryAcceess;
     uint64_t clock;
     std::atomic<u64> &clockVar;
@@ -314,7 +313,7 @@ public:
 
     snd_pcm_t *handle;
 
-    AudioDriver(_MBC &vram, std::atomic<u64> &clockVar, std::atomic_flag &isRunning, int timeQuantum)
+    AudioDriver(_MBC &vram, std::atomic<u64> &clockVar, std::atomic_flag &isRunning, double timeQuantum)
             : timeQuantum{timeQuantum}, clockVar{clockVar}, isRunning{isRunning},
               memoryAcceess(vram.memoryAccess), ch1{}, ch2{}, ch3{}, ch4{}, mixer{},
               paReg{*reinterpret_cast<PulseA *>(&vram[0xFF10])},
@@ -346,7 +345,6 @@ public:
 
         int err;
 
-#ifndef AUDIO_NOT_WORKING
 
         if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
             printf("Playback open error: %s \n", snd_strerror(err));
@@ -359,11 +357,10 @@ public:
                                       1,
                                       RingBuffer::SAMPLES_PER_SECOND,
                                       1,
-                                      20000)) < 0) {   /* 0.5sec */
+                                      20000)) < 0) {
             printf("Playback open error: %s\n", snd_strerror(err));
             exit(EXIT_FAILURE);
         }
-#endif
 
 
     }
@@ -372,7 +369,7 @@ public:
 
         while (isRunning.test(std::memory_order_relaxed)) {
 
-            usleep(timeQuantum);
+            usleep(CLOCKS_PER_FLUSH/4);
 
             clock = clockVar.load(std::memory_order_seq_cst);
             // can choose sending sound to different terminals as well
@@ -467,7 +464,6 @@ public:
         int bufferSize = samples;
         u8 *samplesPtr = &mixer[0];
 
-#ifndef AUDIO_NOT_WORKING
         snd_pcm_sframes_t frames;
         frames = snd_pcm_writei(handle, samplesPtr, bufferSize);
         if (frames < 0)
@@ -478,21 +474,17 @@ public:
         if (frames > 0 && frames < (long) bufferSize) {
             printf("Short write (expected %li, wrote %li)\n", (long) bufferSize, frames);
         }
-        /* pass the remaining samples, otherwise they're dropped in close */
-#endif
         return bufferSize;
 
     }
 
 
     ~AudioDriver() {
-#ifndef AUDIO_NOT_WORKING
         /* pass the remaining samples, otherwise they're dropped in close */
         int err = snd_pcm_drain(handle);
         if (err < 0)
             printf("snd_pcm_drain failed: %s\n", snd_strerror(err));
         snd_pcm_close(handle);
-#endif
     }
 
     void generatePulseB(const PulseB &b, int pulseLen, int &finalVol) {
@@ -527,7 +519,7 @@ public:
         int sweepDir = pa.sweepDir ? 1 : -1;
         int sweepShiftN = pa.sweepNum;
         int duty = pa.dutyPattern;
-        int len = pa.counter ? pa.len : pulseLen;
+        int len = pa.len;
         int initialVol = pa.initialVol;
         int volStep = pa.envelopeDir ? 1 : -1;
         int volSweep = pa.volEnvelopeNum;
@@ -545,7 +537,7 @@ public:
         const u8 low = waveForm[duty][0];
         const u8 high = waveForm[duty][1];
         const long long volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
-        const long long soundLengthNs = 1e9 / 256.0 * (64 - len);
+        const long long soundLengthNs = pa.counter ? 1e9 / 256.0 * (64 - len) : 20000000;
         finalFreq = initialFreq;
         long long timePassedNs = 0;
         while (timePassedNs <= soundLengthNs) {
@@ -565,12 +557,12 @@ public:
 
     void generateWave(Wave &w, int soundLen) {
 
-        u8 soundLenFmt = w.counter ? w.len : soundLen;
+        u8 soundLenFmt = w.len;
         u8 outputLevel = w.outputLevel;
         uint32_t freqFmt = w.getFreq();
 
 
-        long long soundLenNs = 1e9 / 256.0 * (256 - soundLenFmt);
+        long long soundLenNs = w.counter ? 1e9 / 256.0 * (256 - soundLenFmt) : 20000000;
         uint16_t soundScale = (outputLevel - 1);
         uint16_t freq = 65536 / (2048 - freqFmt);
         long long oneClock = 1e9 / freq / 32;

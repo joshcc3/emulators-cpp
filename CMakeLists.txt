@@ -27,6 +27,11 @@ add_executable(
 )
 
 add_executable(
+        audio_test
+        audio_driver2.cpp
+)
+
+add_executable(
         multithread_investigation
         multithreading_investigation.cpp
 )
@@ -71,3 +76,4 @@ add_executable(vram_viz gameboy/vram_viz.cpp)
 
 target_link_libraries(gba_emulator sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})
 target_link_libraries(vram_viz sfml-graphics sfml-window sfml-audio sfml-system asound ${BOOST_LIBRARIES})
+target_link_libraries(audio_test asound)

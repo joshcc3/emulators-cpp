@@ -187,7 +187,7 @@ The two lower STAT bits show the current status of the LCD controller.
          */
 // 12634626, 1a57
 
-#ifdef DEBUG
+#ifdef PERF_DEBUG
         {
             int bufferSize = 100;
             static std::vector<u16> pcs(bufferSize, 0);
