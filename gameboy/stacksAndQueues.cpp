@@ -22,6 +22,8 @@ using namespace std;
 #include <map>
 #include <cstdint>
 #include <cassert>
+#include <list>
+#include <cmath>
 
 /*
     OrderBook is a level 3 orderbook.  Please fill out the stub below.
@@ -47,13 +49,14 @@ using OrderId = int;
 
 
 using L2 = map<OrderId, Order>;
-using SideLevels = deque<L2>;
+using SideLevels = list<L2>;
 
 struct OrderIdLoc {
-    L2 &l2;
+    char side;
+    SideLevels::iterator l2;
     L2::iterator loc;
 
-    OrderIdLoc(L2 &l2, L2::iterator loc) : l2{l2}, loc{loc} {
+    OrderIdLoc(char side, SideLevels ::iterator l2, L2::iterator loc) : side{side}, l2{l2}, loc{loc} {
     }
 
 };
@@ -75,12 +78,12 @@ public:
 
     static double getPriceD(const L2 &bids) {
         assert(!bids.empty());
-        return bids.begin()->second.priceL / double(PRECISION);
+        return double(bids.begin()->second.priceL) / double(PRECISION);
     }
 
     static bool isAggressiveOrder(i64 price, SideLevels &levels, char side) {
         int dir = side == 'b' ? 1 : -1;
-        return !levels.empty() && (getPriceL(levels[0]) - price) * dir < 0;
+        return !levels.empty() && (getPriceL(*levels.begin()) - price) * dir < 0;
     }
 
     static i64 normPrice(double price) {
@@ -109,23 +112,25 @@ public:
             if (compare(priceL, curPrice)) {
                 L2 mp{{orderId, Order{orderId, side, size, priceL}}};
 
-                auto insertPos = levels.emplace(iter, mp);
+                auto insertPos = levels.emplace(iter, std::move(mp));
                 auto res = insertPos->find(orderId);
-                orderIdMap.emplace(orderId, OrderIdLoc{*iter, res});
+                orderIdMap.emplace(orderId, OrderIdLoc{side, iter, res});
+                return;
             } else if (priceL == curPrice) {
                 auto res = iter->emplace(orderId, Order{orderId, side, size, priceL});
-                if (res.second) {
+                if (!res.second) {
                     assert(false);
                 }
-                orderIdMap.emplace(orderId, OrderIdLoc{*iter, res.first});
+                orderIdMap.emplace(orderId, OrderIdLoc{side, iter, res.first});
+                return;
             }
         }
 
         assert(iter == levels.end());
         L2 mp{{orderId, Order{orderId, side, size, priceL}}};
-        const deque<L2>::iterator &insertPos = levels.emplace(iter, mp);
-        const auto& res = insertPos->find(orderId);
-        orderIdMap.emplace(orderId, OrderIdLoc{*insertPos, res});
+        const SideLevels::iterator &insertPos = levels.emplace(iter, mp);
+        const auto &res = insertPos->find(orderId);
+        orderIdMap.emplace(orderId, OrderIdLoc{side, insertPos, res});
 
     }
 
@@ -141,6 +146,8 @@ public:
     }
 
     void modifyOrder(int oldOrderId, int orderId, char side, int newSize, double newPrice) {
+        deleteOrder(oldOrderId);
+        newOrder(orderId, side, newSize, newPrice);
     }
 
     //replaces order with different order
@@ -151,7 +158,7 @@ public:
         assert(pos.loc->second.size >= size);
         pos.loc->second.size = size;
         if (pos.loc->second.size <= 0) {
-            pos.l2.erase(pos.loc);
+            deleteOrder(orderId);
         }
     }
 
@@ -159,8 +166,14 @@ public:
     void deleteOrder(int orderId) {
         const auto &elem = orderIdMap.find(orderId);
         assert(elem != orderIdMap.end());
-
-        elem->second.l2.erase(elem->second.loc);
+        // TODO - clean up the order id map as well.
+        // clean up the level as well if the row is empty;
+        auto &l2 = elem->second.l2;
+        char side = l2->begin()->second.side;
+        l2->erase(elem->second.loc);
+        if(l2->empty()) {
+            getSideLevels(elem->second.side).erase(l2);
+        }
     }
 
 
@@ -171,13 +184,27 @@ public:
 
     //returns the price of a level.  Level 0 is top of book.
     double getLevelPrice(char side, int level) {
-        return getPriceD(getSideLevels(side)[level]);
+
+        SideLevels &levels = getSideLevels(side);
+        auto iter = levels.begin();
+        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if(iter == levels.end()) {
+            return std::nan("");
+        } else {
+            return getPriceD(*iter);
+        }
     }
 
     //returns the size of a level.
     int getLevelSize(char side, int level) {
         // TODO - optimize this.
-        auto mp = getSideLevels(side)[level];
+        SideLevels &levels = getSideLevels(side);
+        auto iter = levels.begin();
+        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if(iter == levels.end()) {
+            return std::nan("");
+        }
+        const auto &mp = *iter;
         int res = 0;
         for (const auto &e: mp) {
             res += e.second.size;
@@ -187,7 +214,13 @@ public:
 
     //returns the number of orders contained in price level.
     int getLevelOrderCount(char side, int level) {
-        return int(getSideLevels(side)[level].size());
+        SideLevels &levels = getSideLevels(side);
+        auto iter = levels.begin();
+        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if(iter == levels.end()) {
+            return std::nan("");
+        }
+        return int(iter->size());
     }
 
     SideLevels &getSideLevels(char side) {
@@ -215,8 +248,9 @@ int main(int argc, char *argv[]) {
     FILE *file = fopen("/home/jc/CLionProjects/gb_emulator/data/output.txt", "w");
 
     OrderBook book;
-
+    int counter = 0;
     while (scanf("%c %c %d %d %lf %d\n", &instruction, &side, &orderId, &size, &price, &oldOrderId) != EOF) {
+        ++counter;
         switch (instruction) {
             case 'n':
                 book.newOrder(orderId, side, size, price);
