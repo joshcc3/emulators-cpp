@@ -14,8 +14,8 @@
 #include <SFML/Graphics.hpp>
 #include <atomic>
 #include <thread>
-#include "audio_driver2.h"
 
+#include "audio_driver2.h"
 #include "structs.h"
 #include "PPU.h"
 #include "CPU.h"

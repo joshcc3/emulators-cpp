@@ -10,7 +10,6 @@
 #include <vector>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
-#include "audio_driver.h"
 
 #include "structs.h"
 #include "PPU.h"

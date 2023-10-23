@@ -31,8 +31,8 @@ i64 PRECISION = 1e9;
 struct Order {
     const int orderId;
     const char side;
-    int size;
     i64 priceL;
+    int size;
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "UnusedValue"
@@ -41,23 +41,107 @@ struct Order {
 
 #pragma clang diagnostic pop
 
-
 };
 
 using OrderId = int;
 
-//struct L2 {
-//    L2(map<OrderId, Order> &&existing) : mp(existing), sum{0} {}
-//
-//    using iterator = mp::iterator;
-//
-//    map<OrderId, Order> mp;
-//    int sum;
-//
-//
-//};
 
-using L2 = map<OrderId, Order>;
+struct L2 {
+    int levelSize;
+    map<OrderId, Order> orders;
+    using const_iterator = map<OrderId, Order>::const_iterator;
+    using iterator = map<OrderId, Order>::iterator;
+
+    explicit L2(map<OrderId, Order> &&mp) : orders(mp), levelSize{0} {
+        for (const auto &it: mp) {
+            levelSize += it.second.size;
+        }
+    }
+
+    [[nodiscard]] bool empty() const {
+        assert(orders.empty() == (levelSize == 0));
+        return orders.empty();
+    }
+
+    [[nodiscard]] const_iterator begin() const {
+        return orders.begin();
+    }
+
+    iterator begin() {
+        return orders.begin();
+    }
+
+    [[nodiscard]] const_iterator end() const {
+        return orders.end();
+    }
+
+    iterator end() {
+        return orders.end();
+    }
+
+    iterator find(OrderId id) {
+        return orders.find(id);
+    }
+
+    pair<iterator, bool> emplace(int orderId, Order order) {
+        assert(orders.find(orderId) == orders.end());
+        assert(order.orderId == orderId && order.size > 0);
+        levelSize += order.size;
+
+        return orders.emplace(orderId, order);
+    }
+
+    void removeQty(iterator iterator, int qty) {
+        assert(qty <= iterator->second.size);
+        iterator->second.size -= qty;
+        levelSize -= qty;
+    }
+
+    void erase(iterator iter) {
+        assert(orders.begin()->second.priceL == iter->second.priceL);
+
+        levelSize -= iter->second.size;
+        orders.erase(iter);
+
+        assert(levelSize >= 0);
+    }
+
+    [[nodiscard]] size_t size() const {
+        assert(!orders.empty());
+        return orders.size();
+    }
+
+    int match(int remainingQty, vector<OrderId> &toDel) {
+        assert(remainingQty > 0);
+        int ogQty = remainingQty;
+        auto it = orders.begin();
+        for (; it != orders.end() && remainingQty > 0; ++it) {
+            int qtyAtLevel = it->second.size;
+            int orderId = it->second.orderId;
+            int matchedQty = min(qtyAtLevel, remainingQty);
+            if (matchedQty < qtyAtLevel) {
+                removeQty(it, remainingQty);
+                remainingQty = 0;
+                break;
+            } else {
+                toDel.push_back(orderId);
+            }
+            remainingQty -= it->second.size;
+        }
+        assert(remainingQty < ogQty || it != orders.begin());
+        assert(remainingQty >= 0);
+        return remainingQty;
+    }
+
+    void reduce(iterator pos, int newSize) {
+        levelSize -= (pos->second.size - newSize);
+        pos->second.size = newSize;
+    }
+};
+
+
+//using L2 = map<OrderId, Order>;
+
 using SideLevels = list<L2>;
 
 struct OrderIdLoc {
@@ -91,6 +175,7 @@ public:
     }
 
     static bool isAggressiveOrder(i64 price, SideLevels &levels, char side) {
+        assert(side == 'b' || side == 's');
         int dir = side == 'b' ? 1 : -1;
         return !levels.empty() && (getPriceL(*levels.begin()) - price) * dir < 0;
     }
@@ -119,9 +204,9 @@ public:
         for (; iter != levels.end(); ++iter) {
             i64 curPrice = getPriceL(*iter);
             if (compare(priceL, curPrice)) {
-                L2 mp{{orderId, Order{orderId, side, size, priceL}}};
+                L2 l2{{{orderId, Order{orderId, side, size, priceL}}}};
 
-                auto insertPos = levels.emplace(iter, std::move(mp));
+                auto insertPos = levels.emplace(iter, std::move(l2));
                 auto res = insertPos->find(orderId);
                 orderIdMap.emplace(orderId, OrderIdLoc{side, insertPos, res});
                 return;
@@ -136,30 +221,11 @@ public:
         }
 
         assert(iter == levels.end());
-        L2 mp{{orderId, Order{orderId, side, size, priceL}}};
+        L2 mp{{{orderId, Order{orderId, side, size, priceL}}}};
         const SideLevels::iterator &insertPos = levels.emplace(iter, mp);
         const auto &res = insertPos->find(orderId);
         orderIdMap.emplace(orderId, OrderIdLoc{side, insertPos, res});
 
-    }
-
-    static int matchWithLevel(L2 &levels, int remainingQty, vector<OrderId> &toDel) {
-        assert(remainingQty > 0);
-        int ogQty = remainingQty;
-        auto it = levels.begin();
-        for (; it != levels.end() && remainingQty > 0; ++it) {
-            int qtyAtLevel = it->second.size;
-            int orderId = it->second.orderId;
-            int matchedQty = min(qtyAtLevel, remainingQty);
-            if (matchedQty < qtyAtLevel) {
-                it->second.size -= remainingQty;
-                break;
-            } else {
-                toDel.push_back(orderId);
-            }
-        }
-        assert(remainingQty == ogQty || it != levels.begin());
-        return remainingQty;
     }
 
     static bool isAggPrice(char side, i64 priceL, i64 restingPrice) {
@@ -177,7 +243,7 @@ public:
         vector<OrderId> orderIDsToDelete(8, 0);
 
         while (remainingQty > 0 && levelIter != oppLevels.end() && isAggPrice(side, priceL, getPriceL(*levelIter))) {
-            remainingQty = matchWithLevel(*levelIter, remainingQty, orderIDsToDelete);
+            remainingQty = levelIter->match(remainingQty, orderIDsToDelete);
         }
         for (auto orderID: orderIDsToDelete) {
             const Order existingOrder = deleteOrder(orderID);
@@ -212,22 +278,23 @@ public:
     }
 
     //replaces order with different order
-    void reduceOrder(int orderId, int size) {
+    void reduceOrder(int orderId, int newSize) {
         const auto &elem = orderIdMap.find(orderId);
         assert(elem != orderIdMap.end());
         auto &pos = elem->second;
-        if (pos.loc->second.size >= size) {
-            pos.loc->second.size = size;
+        if (pos.loc->second.size >= newSize) {
+            pos.l2->reduce(pos.loc, newSize);
             if (pos.loc->second.size <= 0) {
                 const Order res = deleteOrder(orderId);
                 assert(res.size == 0);
                 assert(res.orderId == orderId);
             }
         }
+
     }
 
     //deletes order from orderbook
-    const Order deleteOrder(int orderId) {
+    Order deleteOrder(int orderId) {
         const auto &elem = orderIdMap.find(orderId);
         assert(elem != orderIdMap.end());
         const auto &[id, loc] = *elem;
@@ -294,10 +361,12 @@ public:
     }
 
     SideLevels &getSideLevels(char side) {
+        assert(side == 'b' || side == 's');
         return side == 'b' ? bidLevels : askLevels;
     }
 
     SideLevels &getOppSideLevels(char side) {
+        assert(side == 'b' || side == 's');
         return side == 'b' ? askLevels : bidLevels;
     }
 };

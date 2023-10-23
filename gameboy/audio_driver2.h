@@ -372,6 +372,7 @@ public:
 
             pa.restart = 0;
             pa.counter = 0;
+            enabled = true;
 
         }
 
@@ -463,6 +464,7 @@ public:
 
             pb.restart = 0;
             pb.counter = 0;
+            enabled = true;
 
         }
 
@@ -583,6 +585,7 @@ This storage area holds 32 4-bit samples that are played back upper 4 bits first
 
             w.counter = 0;
             w.restart = 0;
+            enabled = true;
 
         }
 
@@ -698,11 +701,22 @@ to zero volume will NOT cause the sound flag to go off.
     void run() {
         while (isRunning.test(std::memory_order_relaxed)) {
             step();
+            usleep(1);
         }
     }
 
 
     void step() {
+
+#ifdef DEBUG
+        constexpr int SZ = 100;
+        static array<u8, SZ> adat{};
+        static array<u8, SZ> bdat{};
+        static array<u8, SZ> wdat{};
+        int aC = 0;
+        int bC = 0;
+        int wC = 0;
+#endif
 
         aSM.syncState();
         paSM.syncState();
@@ -721,6 +735,15 @@ to zero volume will NOT cause the sound flag to go off.
             u8 ch4 = nSM.step();
             u8 output = ch1 + ch2 + ch3 + ch4;
             assert(output <= 255);
+
+#ifdef DEBUG
+            adat[aC] = ch1;
+            bdat[bC] = ch1;
+            wdat[wC] = ch1;
+            aC = (aC - 1 + SZ) % SZ;
+            bC = (bC - 1 + SZ) % SZ;
+            wC = (wC - 1 + SZ) % SZ;
+#endif
             buffer[i] = output * 4;
         }
 

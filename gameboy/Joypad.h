@@ -8,7 +8,6 @@
 #include "CPU.h"
 #include "PPU.h"
 #include "structs.h"
-#include "audio_driver.h"
 #include "../chip8/chip8.h"
 #include <fstream>
 #include <cassert>
