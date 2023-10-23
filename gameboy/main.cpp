@@ -5,6 +5,8 @@
 #define PERF_DEBUG
 //#define VERBOSE
 
+#define AUDIO2
+
 #include <algorithm>
 #include <iostream>
 #include <filesystem>
@@ -15,7 +17,14 @@
 #include <atomic>
 #include <thread>
 
+#ifdef AUDIO2
+
 #include "audio_driver2.h"
+
+#else
+#include "audio_driver.h"
+#endif
+
 #include "structs.h"
 #include "PPU.h"
 #include "CPU.h"
@@ -222,8 +231,11 @@ int main() {
     MBC ram(bootROM, cartridgeROM);
     gb_emu emu{pixels, ram, clockVar};
 
+#ifdef AUDIO2
     audio_driver2 audioDriver{MUT(ram), clockVar, isRunning};
-
+#else
+    AudioDriver audioDriver{MUT(ram), clockVar, isRunning, gb_emu::TIME_QUANTUM};
+#endif
     std::thread clockT([&clockVar, &isRunning]() { clockThread(clockVar, isRunning); });
     std::thread audioT([&audioDriver]() {
         audioDriver.run();

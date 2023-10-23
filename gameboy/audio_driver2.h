@@ -212,7 +212,7 @@ public:
 
     constexpr static int SAMPLES_PER_SECOND = (1 << 14);
     constexpr static int LATENCY_US = 20000;
-
+    constexpr static int NS_PER_SAMPLE = 1e9 / AlsaSM::SAMPLES_PER_SECOND;
     snd_pcm_t *handle;
     unsigned long delay;
     unsigned long available;
@@ -398,7 +398,7 @@ public:
             int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 15LL);
 
             bool outputHigh = (timePassedNs % (8 * oneClock)) >= (low * oneClock);
-            timePassedNs += 1e9 / AlsaSM::SAMPLES_PER_SECOND;
+            timePassedNs += AlsaSM::NS_PER_SAMPLE;
 
             return outputHigh ? volume : 0;
         } else {
@@ -486,7 +486,7 @@ public:
             int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 15LL);
 
             bool outputHigh = (timePassedNs % (8 * oneClock)) >= (low * oneClock);
-            timePassedNs += 1e9 / AlsaSM::SAMPLES_PER_SECOND;
+            timePassedNs += AlsaSM::NS_PER_SAMPLE;
 
             return outputHigh ? volume : 0;
         } else {
@@ -573,7 +573,7 @@ This storage area holds 32 4-bit samples that are played back upper 4 bits first
             uint16_t soundScale = (outputLevel - 1);
 
             freq = 65536 / (2048 - freqFmt);
-            soundLenNs = w.counter ? 1e9 / 256.0 * (256 - soundLenFmt) : 20000000;
+            soundLenNs = 1e9 / 256.0 * (256 - soundLenFmt);
 
             for (int i = 0; i < 16; ++i) {
                 waveForm[2 * i] = (waveData[i].upper >> soundScale) * 8;
@@ -608,15 +608,15 @@ This storage area holds 32 4-bit samples that are played back upper 4 bits first
             int ix = (timePassedNs % waveLenInNs) / nsPerSample;
             output = waveForm[ix];
 
-            return output;
         } else {
             output = 0;
         }
 
-        timePassedNs += nsPerSample;
+        timePassedNs += AlsaSM::NS_PER_SAMPLE;
         return output;
 
     }
+
 
 };
 
