@@ -94,7 +94,7 @@ struct PulseA {
     u8 sweepNum: 3; // r/w
     u8 sweepDir: 1;
     u8 sweepTime: 3;
-    u8 _unused: 1;
+    [[maybe_unused]] u8 _unused: 1;
     u8 len: 6; // r/w
     u8 dutyPattern: 2;
     u8 volEnvelopeNum: 3; // r/w
@@ -102,7 +102,7 @@ struct PulseA {
     u8 initialVol: 4;
     u8 freqLo: 8; // wo
     u8 freqHi: 3; // r/w
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 
@@ -155,7 +155,7 @@ struct PulseB {
     u8 initialVol: 4;
     u8 freqLo: 8; // wo
     u8 freqHi: 3;
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 
@@ -174,12 +174,12 @@ struct PulseB {
 
 struct Wave {
     u8 len: 8; // r/w
-    u8 _unused1: 5;
+    [[maybe_unused]] u8 _unused1: 5;
     u8 outputLevel: 2;
-    u8 _unusued2: 1;
+    [[maybe_unused]] u8 _unusued2: 1;
     u8 freqLo: 8; // wo
     u8 freqHi: 3; // rw
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 

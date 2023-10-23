@@ -5,6 +5,7 @@
 #ifndef AUDIO_DRIVER2_H
 #define AUDIO_DRIVER2_H
 
+#include "Memory.h"
 #include <iostream>
 #include <cstdint>
 #include <alsa/asoundlib.h>
@@ -12,9 +13,9 @@
 #include <chrono>
 
 using u8 = uint8_t;
-using u16 = uint8_t;
-using u32 = uint8_t;
-using u64 = uint8_t;
+using u16 = uint16_t;
+using u32 = uint32_t;
+using u64 = uint64_t;
 
 using namespace std;
 
@@ -23,7 +24,7 @@ struct PulseA {
     u8 sweepNum: 3; // r/w
     u8 sweepDir: 1;
     u8 sweepTime: 3;
-    u8 _unused: 1;
+    [[maybe_unused]] u8 _unused: 1;
     u8 len: 6; // r/w
     u8 dutyPattern: 2;
     u8 volEnvelopeNum: 3; // r/w
@@ -31,7 +32,7 @@ struct PulseA {
     u8 initialVol: 4;
     u8 freqLo: 8; // wo
     u8 freqHi: 3; // r/w
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 
@@ -84,7 +85,7 @@ struct PulseB {
     u8 initialVol: 4;
     u8 freqLo: 8; // wo
     u8 freqHi: 3;
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 
@@ -102,13 +103,16 @@ struct PulseB {
 };
 
 struct Wave {
+    // FF1A
+    [[maybe_unused]] u8 _unused0: 7;
+    u8 soundOnOff: 1;
     u8 len: 8; // r/w
-    u8 _unused1: 5;
+    [[maybe_unused]] u8 _unused1: 5;
     u8 outputLevel: 2;
-    u8 _unusued2: 1;
+    [[maybe_unused]] u8 _unusued2: 1;
     u8 freqLo: 8; // wo
     u8 freqHi: 3; // rw
-    u8 _unused2: 3;
+    [[maybe_unused]] u8 _unused2: 3;
     u8 counter: 1;
     u8 restart: 1;
 
@@ -208,7 +212,6 @@ public:
 
     constexpr static int SAMPLES_PER_SECOND = (1 << 14);
     constexpr static int LATENCY_US = 20000;
-    constexpr static snd_pcm_uframes_t bytes10ms = SAMPLES_PER_SECOND / 100;
 
     snd_pcm_t *handle;
     unsigned long delay;
@@ -324,31 +327,58 @@ public:
     int volStepCounterNs;
     int soundLengthNs;
 
-    chrono::time_point<chrono::system_clock> cp;
     long long timePassedNs;
 
     bool enabled;
 
 
-    PulseASM(PulseA &reg) : pa{reg}, enabled{true}, timePassedNs{0}, cp{chrono::system_clock::now()} {
+    PulseASM(PulseA &reg) :
+            pa{reg},
+            enabled{false},
+            timePassedNs{0},
+            sweepTimeNs{0},
+            sweepTime{},
+            sweepDir{},
+            sweepShiftN{},
+            duty{},
+            len{},
+            initialVol{},
+            volStep{},
+            volSweep{},
+            rawFreq{},
+            initialFreq{},
+            volStepCounterNs{},
+            soundLengthNs{} {
     }
 
     void syncState() {
 
-        sweepTime = pa.sweepTime;
-        sweepDir = pa.sweepDir ? 1 : -1;
-        sweepShiftN = pa.sweepNum;
-        duty = pa.dutyPattern;
-        len = pa.len;
-        initialVol = pa.initialVol;
-        volStep = pa.envelopeDir ? 1 : -1;
-        volSweep = pa.volEnvelopeNum;
-        rawFreq = pa.getFreq();
+        if (pa.restart == 1 || pa.counter == 1) {
 
-        initialFreq = 131072 / (2048 - rawFreq);
-        sweepTimeNs = (double) (7.8 * 1e6 * sweepTime);
-        volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
-        soundLengthNs = pa.counter ? 1e9 / 256.0 * (64 - len) : 20000000;
+            sweepTime = pa.sweepTime;
+            sweepDir = pa.sweepDir ? 1 : -1;
+            sweepShiftN = pa.sweepNum;
+            duty = pa.dutyPattern;
+            len = pa.len;
+            initialVol = pa.initialVol;
+            volStep = pa.envelopeDir ? 1 : -1;
+            volSweep = pa.volEnvelopeNum;
+            rawFreq = pa.getFreq();
+
+            initialFreq = 131072 / (2048 - rawFreq);
+            sweepTimeNs = (double) (7.8 * 1e6 * sweepTime);
+            volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
+            soundLengthNs = 1e9 / 256.0 * (64 - len);
+
+            pa.restart = 0;
+            pa.counter = 0;
+
+        }
+
+        if (pa.counter && timePassedNs >= soundLengthNs) {
+            enabled = false;
+            timePassedNs = 0;
+        }
 
 
     }
@@ -366,11 +396,8 @@ public:
 
             int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 15LL);
 
-            chrono::time_point now = chrono::system_clock::now();
-            long long elapsedTime = chrono::duration_cast<chrono::nanoseconds>(now - cp).count();
-            cp = now;
             bool outputHigh = (timePassedNs % (8 * oneClock)) >= (low * oneClock);
-            timePassedNs += 1e9/AlsaSM::SAMPLES_PER_SECOND;
+            timePassedNs += 1e9 / AlsaSM::SAMPLES_PER_SECOND;
 
             return outputHigh ? volume : 0;
         } else {
@@ -382,19 +409,210 @@ public:
 
 class PulseBSM {
 public:
-    void syncState() {}
+    const u8 waveForm[4][2] = {{1, 7},
+                               {2, 6},
+                               {4, 4},
+                               {6, 2}};
+    PulseB &pb;
+
+
+    int duty;
+    int len;
+    int initialVol;
+    int volStep;
+    int volSweep;
+    int rawFreq;
+
+    int initialFreq;
+    int volStepCounterNs;
+    int soundLengthNs;
+
+    long long timePassedNs;
+
+    bool enabled;
+
+
+    PulseBSM(PulseB &reg) :
+            pb{reg},
+            enabled{false},
+            timePassedNs{0},
+            duty{},
+            len{},
+            initialVol{},
+            volStep{},
+            volSweep{},
+            rawFreq{},
+            initialFreq{},
+            volStepCounterNs{},
+            soundLengthNs{} {}
+
+    void syncState() {
+
+        if (pb.restart == 1 || pb.counter == 1) {
+
+            duty = pb.dutyPattern;
+            len = pb.len;
+            initialVol = pb.initialVol;
+            volStep = pb.envelopeDir ? 1 : -1;
+            volSweep = pb.volEnvelopeNum;
+            rawFreq = pb.getFreq();
+
+            initialFreq = 131072 / (2048 - rawFreq);
+            volStepCounterNs = volSweep == 0 ? 2e9 : 1e9 / 64.0 * volStep * volSweep;
+            soundLengthNs = 1e9 / 256.0 * (64 - len);
+
+            pb.restart = 0;
+            pb.counter = 0;
+
+        }
+
+        if (pb.counter && timePassedNs >= soundLengthNs) {
+            enabled = false;
+            timePassedNs = 0;
+        }
+
+    }
 
     u8 step() {
-        return 0;
+
+        if (enabled) {
+            const u8 low = waveForm[duty][0];
+            const u8 high = waveForm[duty][1];
+
+            int oneClock = 1e9 / initialFreq / 8;
+
+            int volume = std::min(std::max(initialVol + timePassedNs / volStepCounterNs, 0LL), 15LL);
+
+            bool outputHigh = (timePassedNs % (8 * oneClock)) >= (low * oneClock);
+            timePassedNs += 1e9 / AlsaSM::SAMPLES_PER_SECOND;
+
+            return outputHigh ? volume : 0;
+        } else {
+            return 0;
+        }
     }
 };
 
+
 class WaveSM {
 public:
-    void syncState() {}
+    /*
+     * This channel can be used to output digital sound, the length of the sample buffer (Wave RAM) is limited to 32 digits.
+     * This sound channel can be also used to output normal tones when initializing the Wave RAM by a square wave.
+     * This channel doesn't have a volume envelope register.
+
+FF1A - NR30 - Channel 3 Sound on/off (R/W)
+  Bit 7 - Sound Channel 3 Off  (0=Stop, 1=Playback)  (Read/Write)
+
+FF1B - NR31 - Channel 3 Sound Length
+  Bit 7-0 - Sound length (t1: 0 - 255)
+Sound Length = (256-t1)*(1/256) seconds
+This value is used only if Bit 6 in NR34 is set.
+
+FF1C - NR32 - Channel 3 Select output level (R/W)
+  Bit 6-5 - Select output level (Read/Write)
+Possible Output levels are:
+  0: Mute (No sound)
+  1: 100% Volume (Produce Wave Pattern RAM Data as it is)
+  2:  50% Volume (Produce Wave Pattern RAM data shifted once to the right)
+  3:  25% Volume (Produce Wave Pattern RAM data shifted twice to the right)
+
+FF1D - NR33 - Channel 3 Frequency's lower data (W)
+Lower 8 bits of an 11 bit frequency (x).
+
+FF1E - NR34 - Channel 3 Frequency's higher data (R/W)
+  Bit 7   - Initial (1=Restart Sound)     (Write Only)
+  Bit 6   - Counter/consecutive selection (Read/Write)
+            (1=Stop output when length in NR31 expires)
+  Bit 2-0 - Frequency's higher 3 bits (x) (Write Only)
+Frequency = 4194304/(64*(2048-x)) Hz = 65536/(2048-x) Hz
+
+FF30-FF3F - Wave Pattern RAM
+Contents - Waveform storage for arbitrary sound data
+
+This storage area holds 32 4-bit samples that are played back upper 4 bits first.
+     */
+
+    Wave &w;
+    WaveData *waveData; // 16 bytes
+
+    u64 soundLenNs;
+    std::array<u8, 32> waveForm;
+    u32 freq;
+    int nsPerSample;
+    int waveLenInNs;
+
+    u64 timePassedNs;
+    bool enabled;
+
+    // TODO intiialize
+    WaveSM(Wave &w, WaveData *waveData) :
+            w{w},
+            waveData{waveData},
+            soundLenNs{0},
+            waveForm{},
+            freq{0},
+            nsPerSample{0},
+            waveLenInNs{0},
+            timePassedNs{0},
+            enabled{false} {
+
+    }
+
+    void syncState() {
+
+        if (w.counter == 1 || w.restart == 1) {
+
+            timePassedNs = 0;
+
+            u8 soundLenFmt = w.len;
+            u8 outputLevel = w.outputLevel;
+            uint32_t freqFmt = w.getFreq();
+            uint16_t soundScale = (outputLevel - 1);
+
+            freq = 65536 / (2048 - freqFmt);
+            soundLenNs = w.counter ? 1e9 / 256.0 * (256 - soundLenFmt) : 20000000;
+
+            for (int i = 0; i < 16; ++i) {
+                waveForm[2 * i] = (waveData[i].upper >> soundScale) * 8;
+                waveForm[2 * i + 1] = (waveData[i].lower >> soundScale) * 8;
+            }
+
+            nsPerSample = 1e9 / (freq * waveForm.size());
+            waveLenInNs = nsPerSample * waveForm.size();
+
+            w.counter = 0;
+            w.restart = 0;
+
+        }
+
+        if (w.counter && timePassedNs >= soundLenNs) {
+            enabled = false;
+        }
+
+        assert(w.restart == 0 && w.counter == 0);
+
+    }
 
     u8 step() {
-        return 0;
+
+        u8 output;
+        if (enabled && w.soundOnOff == 1) {
+
+            assert(freq != 0);
+            assert(!w.counter || soundLenNs > 0);
+
+            int ix = (timePassedNs % waveLenInNs) / nsPerSample;
+            output = waveForm[ix];
+
+            return output;
+        } else {
+            output = 0;
+        }
+
+        timePassedNs += nsPerSample;
+        return output;
+
     }
 
 };
@@ -426,13 +644,65 @@ PulseA p = PulseA{
         .restart = 1
 };
 
+PulseB p2 = PulseB{
+        .len = 0,
+        .dutyPattern = 0,
+        .volEnvelopeNum = 0,
+        .envelopeDir = 0,
+        .initialVol = 15,
+        .freqLo = 255, // wo
+        .freqHi = 3,
+        .counter = 0,
+        .restart = 1
+};
+
 class audio_driver2 {
+    PulseASM paSM;
+    PulseBSM pbSM;
+    WaveSM wSM;
+    NoiseSM nSM;
+    AlsaSM aSM;
+    atomic_flag &isRunning;
+    atomic<u64> &clockVar;
+
 public:
 
-    audio_driver2() : paSM{p} {
+    /*
+     * FF26 - NR52 - Sound on/off
+If your GB programs don't use sound then write 00h to this register to save 16% or more on GB power consumption.
+Disabeling the sound controller by clearing Bit 7 destroys the contents of all sound registers.
+Also, it is not possible to access any sound registers (execpt FF26) while the sound controller is disabled.
+  Bit 7 - All sound on/off  (0: stop all sound circuits) (Read/Write)
+  Bit 3 - Sound 4 ON flag (Read Only)
+  Bit 2 - Sound 3 ON flag (Read Only)
+  Bit 1 - Sound 2 ON flag (Read Only)
+  Bit 0 - Sound 1 ON flag (Read Only)
+Bits 0-3 of this register are read only status bits, writing to these bits does NOT enable/disable sound.
+The flags get set when sound output is restarted by setting the Initial flag (Bit 7 in NR14-NR44),
+the flag remains set until the sound length has expired (if enabled). A volume envelopes which has decreased
+to zero volume will NOT cause the sound flag to go off.
+     */
+
+    //*reinterpret_cast<PulseA *>(&ram[0xFF10])
+
+    audio_driver2(_MBC &ram, atomic<u64> &clockVar, atomic_flag &isRunning) :
+            isRunning{isRunning},
+            clockVar{clockVar},
+            paSM{*reinterpret_cast<PulseA *>(&ram[0xFF10])},
+            wSM{*reinterpret_cast<Wave *>(&ram[0xFF1A]), reinterpret_cast<WaveData *>(&ram[0xFF30])},
+            pbSM{*reinterpret_cast<PulseB *>(&ram[0xFF16])},
+            nSM{},
+            aSM{} {
     }
 
     void run() {
+        while (isRunning.test(std::memory_order_relaxed)) {
+            step();
+        }
+    }
+
+
+    void step() {
 
         aSM.syncState();
         paSM.syncState();
@@ -443,13 +713,14 @@ public:
         int bufferSize = aSM.getBytesToWrite();
         u8 buffer[bufferSize];
 
+        // TODO look at the global sound control registers.
         for (int i = 0; i < bufferSize; ++i) {
             u8 ch1 = paSM.step();
             u8 ch2 = pbSM.step();
             u8 ch3 = wSM.step();
             u8 ch4 = nSM.step();
             u8 output = ch1 + ch2 + ch3 + ch4;
-            cout << int(ch1) << endl;
+            assert(output <= 255);
             buffer[i] = output * 4;
         }
 
@@ -457,13 +728,6 @@ public:
 
     }
 
-private:
-
-    PulseASM paSM;
-    PulseBSM pbSM;
-    WaveSM wSM;
-    NoiseSM nSM;
-    AlsaSM aSM;
 };
 
 

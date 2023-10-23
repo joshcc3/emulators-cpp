@@ -9,21 +9,15 @@
 #include <map>
 #include <algorithm>
 #include <bitset>
-#include <algorithm>
 #include <cmath>
 #include <array>
 
 using namespace std;
 
 #include <stdio.h>
-#include <cstdlib>
-#include <vector>
-#include <deque>
-#include <map>
 #include <cstdint>
 #include <cassert>
 #include <list>
-#include <cmath>
 
 /*
     OrderBook is a level 3 orderbook.  Please fill out the stub below.
@@ -40,13 +34,28 @@ struct Order {
     int size;
     i64 priceL;
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "UnusedValue"
+
     Order(int orderId, char side, int size, i64 price) : orderId{orderId}, side{side}, size{size}, priceL{price} {}
+
+#pragma clang diagnostic pop
 
 
 };
 
 using OrderId = int;
 
+//struct L2 {
+//    L2(map<OrderId, Order> &&existing) : mp(existing), sum{0} {}
+//
+//    using iterator = mp::iterator;
+//
+//    map<OrderId, Order> mp;
+//    int sum;
+//
+//
+//};
 
 using L2 = map<OrderId, Order>;
 using SideLevels = list<L2>;
@@ -56,7 +65,7 @@ struct OrderIdLoc {
     SideLevels::iterator l2;
     L2::iterator loc;
 
-    OrderIdLoc(char side, SideLevels ::iterator l2, L2::iterator loc) : side{side}, l2{l2}, loc{loc} {
+    OrderIdLoc(char side, SideLevels::iterator l2, L2::iterator loc) : side{side}, l2{l2}, loc{loc} {
     }
 
 };
@@ -78,7 +87,7 @@ public:
 
     static double getPriceD(const L2 &bids) {
         assert(!bids.empty());
-        return double(bids.begin()->second.priceL) / double(PRECISION);
+        return round(double(bids.begin()->second.priceL) / double(PRECISION / 100)) / 100;
     }
 
     static bool isAggressiveOrder(i64 price, SideLevels &levels, char side) {
@@ -87,10 +96,10 @@ public:
     }
 
     static i64 normPrice(double price) {
-        return i64(PRECISION * price);
+        return static_cast<i64>(static_cast<double>(PRECISION) * price);
     }
 
-    bool isBid(char side) {
+    static bool isBid(char side) {
         assert(side == 'b' || side == 's');
         return side == 'b';
     }
@@ -114,7 +123,7 @@ public:
 
                 auto insertPos = levels.emplace(iter, std::move(mp));
                 auto res = insertPos->find(orderId);
-                orderIdMap.emplace(orderId, OrderIdLoc{side, iter, res});
+                orderIdMap.emplace(orderId, OrderIdLoc{side, insertPos, res});
                 return;
             } else if (priceL == curPrice) {
                 auto res = iter->emplace(orderId, Order{orderId, side, size, priceL});
@@ -134,20 +143,72 @@ public:
 
     }
 
+    static int matchWithLevel(L2 &levels, int remainingQty, vector<OrderId> &toDel) {
+        assert(remainingQty > 0);
+        int ogQty = remainingQty;
+        auto it = levels.begin();
+        for (; it != levels.end() && remainingQty > 0; ++it) {
+            int qtyAtLevel = it->second.size;
+            int orderId = it->second.orderId;
+            int matchedQty = min(qtyAtLevel, remainingQty);
+            if (matchedQty < qtyAtLevel) {
+                it->second.size -= remainingQty;
+                break;
+            } else {
+                toDel.push_back(orderId);
+            }
+        }
+        assert(remainingQty == ogQty || it != levels.begin());
+        return remainingQty;
+    }
+
+    static bool isAggPrice(char side, i64 priceL, i64 restingPrice) {
+        if (isBid(side)) {
+            return priceL >= restingPrice;
+        } else {
+            return priceL <= restingPrice;
+        }
+    }
+
+    int match(SideLevels &oppLevels, char side, int size, i64 priceL) {
+
+        int remainingQty = size;
+        auto levelIter = oppLevels.begin();
+        vector<OrderId> orderIDsToDelete(8, 0);
+
+        while (remainingQty > 0 && levelIter != oppLevels.end() && isAggPrice(side, priceL, getPriceL(*levelIter))) {
+            remainingQty = matchWithLevel(*levelIter, remainingQty, orderIDsToDelete);
+        }
+        for (auto orderID: orderIDsToDelete) {
+            const Order existingOrder = deleteOrder(orderID);
+            assert(isAggPrice(side, priceL, existingOrder.priceL));
+        }
+        assert(levelIter == oppLevels.end() || !levelIter->empty() && remainingQty == 0);
+
+        assert(remainingQty == 0 || !isAggressiveOrder(priceL, oppLevels, side));
+        return remainingQty;
+    }
+
     //adds order to order book
-    void newOrder(int orderId, char side, int size, double priceD) {
+    void newOrder(int orderId, char side, int size, double priceD) { // NOLINT(*-no-recursion)
         SideLevels &levelsOpp = getOppSideLevels(side);
         i64 priceL = normPrice(priceD);
         if (isAggressiveOrder(priceL, levelsOpp, side)) {
-            assert(false);
+            int remainingSize = match(levelsOpp, side, size, priceL);
+            assert(!isAggressiveOrder(priceL, levelsOpp, side));
+            newOrder(orderId, side, remainingSize, priceD);
         } else {
             insertLevel(orderId, side, size, priceL);
         }
     }
 
+
     void modifyOrder(int oldOrderId, int orderId, char side, int newSize, double newPrice) {
-        deleteOrder(oldOrderId);
-        newOrder(orderId, side, newSize, newPrice);
+        const Order existingOrder = deleteOrder(oldOrderId);
+        assert(existingOrder.side == side || side != 'b' && side != 's');
+        assert(existingOrder.orderId == oldOrderId);
+        assert(existingOrder.priceL != normPrice(newPrice) || existingOrder.size != newSize);
+        newOrder(orderId, existingOrder.side, newSize, newPrice);
     }
 
     //replaces order with different order
@@ -155,25 +216,34 @@ public:
         const auto &elem = orderIdMap.find(orderId);
         assert(elem != orderIdMap.end());
         auto &pos = elem->second;
-        assert(pos.loc->second.size >= size);
-        pos.loc->second.size = size;
-        if (pos.loc->second.size <= 0) {
-            deleteOrder(orderId);
+        if (pos.loc->second.size >= size) {
+            pos.loc->second.size = size;
+            if (pos.loc->second.size <= 0) {
+                const Order res = deleteOrder(orderId);
+                assert(res.size == 0);
+                assert(res.orderId == orderId);
+            }
         }
     }
 
     //deletes order from orderbook
-    void deleteOrder(int orderId) {
+    const Order deleteOrder(int orderId) {
         const auto &elem = orderIdMap.find(orderId);
         assert(elem != orderIdMap.end());
+        const auto &[id, loc] = *elem;
         // TODO - clean up the order id map as well.
         // clean up the level as well if the row is empty;
-        auto &l2 = elem->second.l2;
-        char side = l2->begin()->second.side;
-        l2->erase(elem->second.loc);
-        if(l2->empty()) {
+        auto &l2 = loc.l2;
+        const Order deletedOrder = loc.loc->second;
+        l2->erase(loc.loc);
+        if (l2->empty()) {
             getSideLevels(elem->second.side).erase(l2);
         }
+        orderIdMap.erase(orderId);
+
+        assert(deletedOrder.orderId == orderId);
+
+        return deletedOrder;
     }
 
 
@@ -187,8 +257,8 @@ public:
 
         SideLevels &levels = getSideLevels(side);
         auto iter = levels.begin();
-        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
-        if(iter == levels.end()) {
+        for (int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if (iter == levels.end()) {
             return std::nan("");
         } else {
             return getPriceD(*iter);
@@ -200,9 +270,9 @@ public:
         // TODO - optimize this.
         SideLevels &levels = getSideLevels(side);
         auto iter = levels.begin();
-        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
-        if(iter == levels.end()) {
-            return std::nan("");
+        for (int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if (iter == levels.end()) {
+            return 0;
         }
         const auto &mp = *iter;
         int res = 0;
@@ -216,9 +286,9 @@ public:
     int getLevelOrderCount(char side, int level) {
         SideLevels &levels = getSideLevels(side);
         auto iter = levels.begin();
-        for(int i = 0; iter != levels.end() && i < level; ++i, ++iter);
-        if(iter == levels.end()) {
-            return std::nan("");
+        for (int i = 0; iter != levels.end() && i < level; ++i, ++iter);
+        if (iter == levels.end()) {
+            return 0;
         }
         return int(iter->size());
     }
@@ -235,6 +305,7 @@ public:
 /*
     Do not change main function
 */
+
 
 int main(int argc, char *argv[]) {
     char instruction;

@@ -28,7 +28,7 @@ add_executable(
 
 add_executable(
         audio_test
-        audio_driver2.cpp
+        gameboy/audio_driver2.cpp
 )
 
 add_executable(

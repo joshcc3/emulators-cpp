@@ -14,7 +14,7 @@
 #include <SFML/Graphics.hpp>
 #include <atomic>
 #include <thread>
-#include "audio_driver.h"
+#include "audio_driver2.h"
 
 #include "structs.h"
 #include "PPU.h"
@@ -89,8 +89,9 @@ public:
 
 #ifdef PERF_DEBUG
             const chrono::time_point endTime = chrono::system_clock::now();
-            rowDisplayTime = rowDisplayTime / 4.0 +  3 / 4.0 *
-                             chrono::duration_cast<chrono::nanoseconds>(endTime - startTime).count();
+            rowDisplayTime = rowDisplayTime / 4.0 + 3 / 4.0 *
+                                                    chrono::duration_cast<chrono::nanoseconds>(
+                                                            endTime - startTime).count();
 #endif
         }
 #ifdef PERF_DEBUG
@@ -221,7 +222,7 @@ int main() {
     MBC ram(bootROM, cartridgeROM);
     gb_emu emu{pixels, ram, clockVar};
 
-    AudioDriver audioDriver{MUT(ram), clockVar, isRunning, gb_emu::TIME_QUANTUM};
+    audio_driver2 audioDriver{MUT(ram), clockVar, isRunning};
 
     std::thread clockT([&clockVar, &isRunning]() { clockThread(clockVar, isRunning); });
     std::thread audioT([&audioDriver]() {
