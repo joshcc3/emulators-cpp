@@ -16,6 +16,12 @@
 
 using namespace std;
 
+/*
+ * Differences from submitted solution:
+ *
+ * Fixes bug 2 bugs and adds more checks.
+ * Handles aggressive orders and caches levelSize calculation.
+ */
 
 /*
     OrderBook is a level 3 orderbook.  Please fill out the stub below.
@@ -154,7 +160,7 @@ struct L3 {
         assert(!orders.empty());
         levelSize -= (pos->second.size - newSize);
         pos->second.size = newSize;
-        assert(levelSize > 0);
+        assert(levelSize >= 0);
     }
 };
 
@@ -282,8 +288,8 @@ public:
         i64 priceL = normPrice(priceD);
         if (isAggressiveOrder(priceL, levelsOpp, side)) {
             int remainingSize = match(levelsOpp, side, size, priceL);
-            assert(!isAggressiveOrder(priceL, levelsOpp, side));
             if (remainingSize > 0) {
+                assert(!isAggressiveOrder(priceL, levelsOpp, side));
                 newOrder(orderId, side, remainingSize, priceD);
             }
         } else {
