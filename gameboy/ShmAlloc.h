@@ -21,6 +21,7 @@ struct ShmAlloc : std::allocator<T> {
 
     /*
      * declare rebind, no state, pointer and reference types must match T*,
+     * allocate(n) is for 'n' objects not 'n' bytes.
      */
 
     typedef T value_type;
